@@ -1,0 +1,217 @@
+{
+  "_comment": "Synqro Update Manifest — sign with Ed25519 before publishing. This file is served over HTTPS from your manifest endpoint and consumed by the Synqro OTA client.",
+  "schema_version": "1",
+  "_comment_schema_version": "Integer string. Increment when breaking changes are made to the manifest schema. The client rejects manifests with an unknown schema_version.",
+
+  "issued_at": "2026-01-15T12:00:00Z",
+  "_comment_issued_at": "RFC3339 UTC timestamp of manifest issuance. Manifests older than 24 hours are rejected by the client (anti-replay protection). Always generate fresh manifests; do not cache and reuse old ones.",
+
+  "installation_id": "",
+  "_comment_installation_id": "Optional: per-tenant or per-device targeting UUID. Leave empty string for universal manifests that apply to all installations. When set, the client validates this field matches its own stored installation_id before applying the update.",
+
+  "version": "1.2.3",
+  "_comment_version": "SemVer string of the release being described. The client compares this against its currently installed version using semver ordering. Downgrade attempts (version < installed) are rejected unless rollback mode is explicitly requested.",
+
+  "channel": "stable",
+  "_comment_channel": "Release channel. Accepted values: 'stable' | 'beta' | 'canary'. Clients are configured with a channel at init time; they only accept manifests matching their configured channel. This prevents accidental promotion of canary builds to stable fleets.",
+
+  "min_client_version": "1.0.0",
+  "_comment_min_client_version": "Minimum Synqro client version required to parse and apply this manifest. Older clients will refuse the update and log an upgrade-client error instead of corrupting state.",
+
+  "rollout_percentage": 100,
+  "_comment_rollout_percentage": "Integer 0-100. Controls staged/canary rollout. The client uses its installation_id to deterministically compute whether it falls within this percentile. Set to 100 for full rollout. Set to 10 for a 10% canary ring.",
+
+  "artifacts": [
+    {
+      "platform": "linux-x86_64",
+      "_comment_platform": "Format: <os>-<arch>. Accepted values match Rust target triple OS+arch components: linux, darwin, windows, android, ios paired with x86_64, aarch64, armv7, i686. The client auto-detects its platform at runtime and selects the matching artifact.",
+      "url": "https://github.com/your-org/your-repo/releases/download/v1.2.3/app-linux-x86_64.tar.gz",
+      "_comment_url": "HTTPS URL only. HTTP is rejected. Must be served with a valid TLS 1.3 certificate. Redirects are followed up to a maximum of 3 hops; redirect targets must also be HTTPS.",
+      "sha256": "<64 lowercase hex characters — SHA-256 of the raw artifact bytes>",
+      "_comment_sha256": "SHA-256 digest of the artifact file as downloaded, before any decompression. Verified client-side before extraction. Computed with: sha256sum <artifact>",
+      "sha512": "<128 lowercase hex characters — SHA-512 of the raw artifact bytes>",
+      "_comment_sha512": "SHA-512 digest for defence-in-depth. Both sha256 AND sha512 must pass before extraction proceeds. Computed with: sha512sum <artifact>",
+      "size_bytes": 1234567,
+      "_comment_size_bytes": "Exact file size in bytes. The client pre-validates Content-Length and rejects downloads that deviate by even 1 byte to prevent truncation or padding attacks.",
+      "sig_ed25519": "<Base64-standard-encoded Ed25519 signature over the raw artifact bytes>",
+      "_comment_sig_ed25519": "Ed25519 signature produced by signing the raw artifact bytes (NOT the hash) with the Synqro release signing key. The corresponding public key is compiled into the client binary. Computed with: openssl pkeyutl -sign -inkey ed25519_private.pem -rawin -in <artifact> | base64"
+    },
+    {
+      "platform": "linux-aarch64",
+      "url": "https://github.com/your-org/your-repo/releases/download/v1.2.3/app-linux-aarch64.tar.gz",
+      "sha256": "<64 lowercase hex characters>",
+      "sha512": "<128 lowercase hex characters>",
+      "size_bytes": 1234321,
+      "sig_ed25519": "<Base64-standard-encoded Ed25519 signature>"
+    },
+    {
+      "platform": "darwin-x86_64",
+      "url": "https://github.com/your-org/your-repo/releases/download/v1.2.3/app-darwin-x86_64.tar.gz",
+      "sha256": "<64 lowercase hex characters>",
+      "sha512": "<128 lowercase hex characters>",
+      "size_bytes": 1456789,
+      "sig_ed25519": "<Base64-standard-encoded Ed25519 signature>"
+    },
+    {
+      "platform": "darwin-aarch64",
+      "url": "https://github.com/your-org/your-repo/releases/download/v1.2.3/app-darwin-aarch64.tar.gz",
+      "sha256": "<64 lowercase hex characters>",
+      "sha512": "<128 lowercase hex characters>",
+      "size_bytes": 1389000,
+      "sig_ed25519": "<Base64-standard-encoded Ed25519 signature>"
+    },
+    {
+      "platform": "windows-x86_64",
+      "url": "https://github.com/your-org/your-repo/releases/download/v1.2.3/app-windows-x86_64.zip",
+      "sha256": "<64 lowercase hex characters>",
+      "sha512": "<128 lowercase hex characters>",
+      "size_bytes": 1567890,
+      "sig_ed25519": "<Base64-standard-encoded Ed25519 signature>"
+    },
+    {
+      "platform": "android-aarch64",
+      "url": "https://github.com/your-org/your-repo/releases/download/v1.2.3/app-android-aarch64.apk",
+      "sha256": "<64 lowercase hex characters>",
+      "sha512": "<128 lowercase hex characters>",
+      "size_bytes": 2100000,
+      "sig_ed25519": "<Base64-standard-encoded Ed25519 signature>"
+    },
+    {
+      "platform": "ios-aarch64",
+      "url": "https://github.com/your-org/your-repo/releases/download/v1.2.3/app-ios-aarch64.ipa",
+      "sha256": "<64 lowercase hex characters>",
+      "sha512": "<128 lowercase hex characters>",
+      "size_bytes": 1890000,
+      "sig_ed25519": "<Base64-standard-encoded Ed25519 signature>"
+    }
+  ],
+
+  "pre_update_hook": "",
+  "_comment_pre_update_hook": "Optional: relative path (inside the extracted artifact) to a script executed BEFORE the update is applied. Must be a path inside the staging directory — absolute paths and path traversal sequences are rejected. Leave empty to skip.",
+
+  "post_update_hook": "",
+  "_comment_post_update_hook": "Optional: relative path to a script executed AFTER successful update application but BEFORE the backup is purged. If this script exits non-zero the update is rolled back automatically.",
+
+  "requires_restart": true,
+  "_comment_requires_restart": "Boolean. When true the client emits a restart-required event after applying the update. The host application is responsible for acting on this event.",
+
+  "_comment_manifest_sig": "Ed25519 signature over the canonical JSON serialization of this manifest. Canonical form: keys sorted lexicographically, no whitespace, UTF-8 encoded, and the 'manifest_sig_ed25519' field itself EXCLUDED from the input bytes. This prevents a circular signature dependency. The client verifies this signature using the compiled-in public key before parsing any other field.",
+  "manifest_sig_ed25519": "<Base64-standard-encoded Ed25519 signature over the canonical manifest JSON excluding this field>",
+
+  "_signing_instructions": {
+    "_comment": "Step-by-step instructions for signing a Synqro manifest and artifacts. Run these on a hardened, air-gapped signing workstation. The private key must NEVER touch a CI runner or be stored in plaintext.",
+
+    "step_1_generate_key_pair": {
+      "description": "Generate an Ed25519 signing key pair. Do this ONCE and store the private key in an HSM or encrypted offline storage.",
+      "commands": [
+        "# Generate private key (PEM format)",
+        "openssl genpkey -algorithm ed25519 -out synqro_signing_key.pem",
+        "",
+        "# Derive and export the public key",
+        "openssl pkey -in synqro_signing_key.pem -pubout -out synqro_signing_key_pub.pem",
+        "",
+        "# Print the public key bytes as hex (embed this in the Synqro client source)",
+        "openssl pkey -in synqro_signing_key_pub.pem -pubin -text -noout",
+        "",
+        "# Encrypt the private key at rest using age (https://github.com/FiloSottile/age)",
+        "# Replace <recipient-public-key> with your age identity public key",
+        "age -r <recipient-public-key> -o synqro_signing_key.pem.age synqro_signing_key.pem",
+        "",
+        "# Shred the plaintext private key after encryption",
+        "shred -u synqro_signing_key.pem"
+      ]
+    },
+
+    "step_2_sign_each_artifact": {
+      "description": "For each release artifact binary, produce an Ed25519 signature over the raw file bytes. Repeat for every platform artifact.",
+      "commands": [
+        "# Decrypt private key into a RAM-backed tmpfs (never write to disk)",
+        "mkdir -p /dev/shm/synqro_signing && chmod 700 /dev/shm/synqro_signing",
+        "age -d -i <your-age-identity-file> synqro_signing_key.pem.age > /dev/shm/synqro_signing/key.pem",
+        "",
+        "# Sign the artifact (raw bytes, NOT the hash)",
+        "ARTIFACT=app-linux-x86_64.tar.gz",
+        "openssl pkeyutl -sign \\",
+        "  -inkey /dev/shm/synqro_signing/key.pem \\",
+        "  -rawin \\",
+        "  -in \"${ARTIFACT}\" \\",
+        "  | base64 --wrap=0",
+        "# Paste the output as the 'sig_ed25519' value for this artifact in the manifest.",
+        "",
+        "# Compute SHA-256 and SHA-512 checksums",
+        "sha256sum \"${ARTIFACT}\"",
+        "sha512sum \"${ARTIFACT}\"",
+        "# Paste the hex digests into the 'sha256' and 'sha512' fields respectively.",
+        "",
+        "# Wipe the decrypted key from RAM when done with all artifacts",
+        "shred -u /dev/shm/synqro_signing/key.pem && rmdir /dev/shm/synqro_signing"
+      ]
+    },
+
+    "step_3_produce_canonical_manifest": {
+      "description": "Produce the canonical JSON form of the manifest (keys sorted, no whitespace, manifest_sig_ed25519 field absent) for signing.",
+      "commands": [
+        "# Install jq if not present: apt-get install -y jq",
+        "",
+        "# Remove the manifest_sig_ed25519 field and all _comment* fields, then canonicalize",
+        "jq -S 'del(.manifest_sig_ed25519) | del(..|objects|._comment?) | del(..|objects| to_entries[] | select(.key | startswith(\"_comment\"))) | .' \\",
+        "  synqro_manifest.json \\",
+        "  | jq -c '.' > synqro_manifest_canonical.json",
+        "",
+        "# Inspect what will be signed",
+        "cat synqro_manifest_canonical.json"
+      ]
+    },
+
+    "step_4_sign_manifest": {
+      "description": "Sign the canonical manifest JSON and insert the signature into the manifest_sig_ed25519 field.",
+      "commands": [
+        "# Decrypt private key into RAM (as in step 2)",
+        "age -d -i <your-age-identity-file> synqro_signing_key.pem.age > /dev/shm/synqro_signing/key.pem",
+        "",
+        "# Sign the canonical manifest",
+        "MANIFEST_SIG=$(openssl pkeyutl -sign \\",
+        "  -inkey /dev/shm/synqro_signing/key.pem \\",
+        "  -rawin \\",
+        "  -in synqro_manifest_canonical.json \\",
+        "  | base64 --wrap=0)",
+        "",
+        "# Insert the signature into the published manifest",
+        "jq --arg sig \"${MANIFEST_SIG}\" '.manifest_sig_ed25519 = $sig' \\",
+        "  synqro_manifest.json > synqro_manifest_signed.json",
+        "",
+        "# Verify the signature before publishing",
+        "openssl pkey -in synqro_signing_key_pub.pem -pubin -text -noout",
+        "openssl pkeyutl -verify \\",
+        "  -pubin -inkey synqro_signing_key_pub.pem \\",
+        "  -rawin \\",
+        "  -in synqro_manifest_canonical.json \\",
+        "  -sigfile <(echo -n \"${MANIFEST_SIG}\" | base64 -d)",
+        "# Expected output: 'Signature Verified Successfully'",
+        "",
+        "# Wipe key from RAM",
+        "shred -u /dev/shm/synqro_signing/key.pem && rmdir /dev/shm/synqro_signing"
+      ]
+    },
+
+    "step_5_publish": {
+      "description": "Upload synqro_manifest_signed.json to your manifest endpoint. Ensure it is served over HTTPS with TLS 1.3 and a valid certificate. Do NOT serve from HTTP or self-signed certificates in production.",
+      "commands": [
+        "# Example: upload to a GCS bucket with public read",
+        "gcloud storage cp synqro_manifest_signed.json gs://your-bucket/synqro_manifest.json \\",
+        "  --cache-control='no-store, no-cache, must-revalidate'",
+        "",
+        "# Example: upload via curl to a private CDN",
+        "curl --fail-with-body \\",
+        "  -H 'Authorization: Bearer ${CDN_TOKEN}' \\",
+        "  -T synqro_manifest_signed.json \\",
+        "  https://cdn.your-domain.com/releases/synqro_manifest.json",
+        "",
+        "# Verify the served manifest matches local copy",
+        "curl -fsSL https://cdn.your-domain.com/releases/synqro_manifest.json | sha256sum",
+        "sha256sum synqro_manifest_signed.json",
+        "# The two SHA-256 values must match exactly."
+      ]
+    }
+  }
+}

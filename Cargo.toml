@@ -1,0 +1,63 @@
+[package]
+name = "synqro"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.78.0"
+license = "MIT OR Apache-2.0"
+description = "Synqro Zero-Trust OTA updater library"
+repository = "https://github.com/synqro/synqro"
+homepage = "https://github.com/synqro/synqro"
+readme = "README.md"
+keywords = ["ota", "updater", "security", "zero-trust", "cryptography"]
+categories = ["network-programming", "cryptography", "os"]
+
+[lib]
+name = "synqro"
+path = "src/lib.rs"
+crate-type = ["cdylib", "staticlib", "rlib"]
+
+[dependencies]
+rustls = { version = "=0.23.10", features = ["ring"] }
+tokio = { version = "=1.38.0", features = ["rt-multi-thread", "macros", "fs", "time", "process", "sync"] }
+reqwest = { version = "=0.12.5", default-features = false, features = ["rustls-tls", "stream", "json"] }
+ed25519-dalek = { version = "=2.1.1", features = ["rand_core"] }
+sha2 = { version = "=0.10.8" }
+hmac = { version = "=0.12.1" }
+hkdf = { version = "=0.12.4" }
+chacha20poly1305 = { version = "=0.10.1" }
+serde = { version = "=1.0.204", features = ["derive"] }
+serde_json = { version = "=1.0.120" }
+serde_yaml = { version = "=0.9.34" }
+getrandom = { version = "=0.2.15" }
+zeroize = { version = "=1.8.1", features = ["derive"] }
+base64 = { version = "=0.22.1" }
+hex = { version = "=0.4.3" }
+tracing = { version = "=0.1.40" }
+tracing-subscriber = { version = "=0.3.18", features = ["json", "env-filter"] }
+thiserror = { version = "=1.0.63" }
+chrono = { version = "=0.4.38", features = ["serde"] }
+uuid = { version = "=1.10.0", features = ["v4", "serde"] }
+once_cell = { version = "=1.19.0" }
+regex = { version = "=1.10.5" }
+atomic-write-file = { version = "=0.1.2" }
+rand = { version = "=0.8.5" }
+webpki-roots = { version = "=0.26.3" }
+x509-parser = { version = "=0.16.0" }
+futures-util = { version = "=0.3.30" }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+nix = { version = "=0.29.0", features = ["process", "signal"] }
+
+[target.'cfg(target_os = "windows")'.dependencies]
+winapi = { version = "=0.3.9", features = ["wincred", "dpapi"] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+security-framework = { version = "=2.11.0" }
+
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+strip = "symbols"
+overflow-checks = true
