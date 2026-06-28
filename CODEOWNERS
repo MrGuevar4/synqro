@@ -1,0 +1,20 @@
+# CODEOWNERS — GitHub automatically requests review from these users
+# on any PR that touches the listed paths.
+#
+# Syntax: <path-pattern>  <@user or @org/team>
+
+# Everything by default
+*                         @MrGuevar4
+
+# Core security-critical paths — extra care required
+src/keychain/             @MrGuevar4
+src/downloader.rs         @MrGuevar4
+src/audit.rs              @MrGuevar4
+ffi/                      @MrGuevar4
+
+# CI / release pipeline — only owner can modify
+.github/                  @MrGuevar4
+scripts/                  @MrGuevar4
+Cargo.toml                @MrGuevar4
+deny.toml                 @MrGuevar4
+rust-toolchain.toml       @MrGuevar4

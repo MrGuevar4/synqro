@@ -1,0 +1,48 @@
+# .github/dependabot.yml
+# Dependabot keeps Cargo, pip, and GitHub Actions dependencies up to date.
+
+version: 2
+updates:
+
+  # ── Rust / Cargo ────────────────────────────────────────────────────────────
+  - package-ecosystem: "cargo"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "UTC"
+    open-pull-requests-limit: 5
+    labels: ["dependencies", "rust"]
+    commit-message:
+      prefix: "chore(deps)"
+    ignore:
+      # Pin major versions manually; auto-update patch+minor only.
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+
+  # ── Python / pip ─────────────────────────────────────────────────────────────
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "UTC"
+    open-pull-requests-limit: 3
+    labels: ["dependencies", "python"]
+    commit-message:
+      prefix: "chore(deps)"
+
+  # ── GitHub Actions ───────────────────────────────────────────────────────────
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "UTC"
+    open-pull-requests-limit: 5
+    labels: ["dependencies", "ci"]
+    commit-message:
+      prefix: "chore(ci)"
