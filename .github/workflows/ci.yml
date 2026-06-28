@@ -1,0 +1,495 @@
+# .github/workflows/ci.yml
+# Synqro — Continuous Integration
+# Runs on every push, pull request, and can be called from release.yml.
+
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: ["**"]
+  workflow_call: {}   # Allows release.yml to invoke all CI checks as a gate
+
+# Cancel in-progress runs for the same branch/PR to save compute.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  RUST_BACKTRACE: 1
+  CARGO_TERM_COLOR: always
+  RUSTUP_TOOLCHAIN: "1.78.0"
+
+jobs:
+
+  # ─────────────────────────────────────────────────────────────
+  # JOB 1: audit
+  # Runs cargo-audit and cargo-deny to check for known
+  # vulnerabilities and license / source policy violations.
+  # ─────────────────────────────────────────────────────────────
+  audit:
+    name: Security Audit (cargo-audit + cargo-deny)
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      security-events: write
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: ${{ env.RUSTUP_TOOLCHAIN }}
+
+      - name: Cache Cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: cargo-registry-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            cargo-registry-${{ runner.os }}-
+
+      - name: Install cargo-audit
+        run: cargo install cargo-audit --locked --version =0.20.0
+
+      - name: Install cargo-deny
+        run: cargo install cargo-deny --locked --version =0.16.1
+
+      - name: Run cargo-audit
+        run: cargo audit --deny warnings --json > audit-report.json
+
+      - name: Upload audit report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: audit-report-${{ github.run_id }}
+          path: audit-report.json
+          retention-days: 90
+
+      - name: Run cargo-deny
+        run: cargo deny check
+
+  # ─────────────────────────────────────────────────────────────
+  # JOB 2: lint
+  # Enforces code formatting and Clippy lints.
+  # ─────────────────────────────────────────────────────────────
+  lint:
+    name: Lint (rustfmt + clippy)
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Install Rust toolchain with rustfmt and clippy
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: ${{ env.RUSTUP_TOOLCHAIN }}
+          components: rustfmt, clippy
+
+      - name: Cache Cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: cargo-registry-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            cargo-registry-${{ runner.os }}-
+
+      - name: Cache build artifacts
+        uses: actions/cache@v4
+        with:
+          path: target/
+          key: cargo-build-${{ runner.os }}-${{ env.RUSTUP_TOOLCHAIN }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            cargo-build-${{ runner.os }}-${{ env.RUSTUP_TOOLCHAIN }}-
+
+      - name: Check formatting (rustfmt)
+        run: cargo fmt --all -- --check
+
+      - name: Run Clippy
+        run: >
+          cargo clippy --all-targets --all-features --
+          -D warnings
+          -D clippy::unwrap_used
+          -D clippy::expect_used
+          -D clippy::panic
+          -D clippy::indexing_slicing
+          -D clippy::arithmetic_side_effects
+          -D clippy::pedantic
+          -A clippy::module_name_repetitions
+
+  # ─────────────────────────────────────────────────────────────
+  # JOB 3: test
+  # Runs the full test suite on all three major platforms.
+  # ─────────────────────────────────────────────────────────────
+  test:
+    name: Test (${{ matrix.os }})
+    needs: [lint]
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-14, windows-2022]
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: ${{ env.RUSTUP_TOOLCHAIN }}
+
+      - name: Cache Cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: cargo-registry-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            cargo-registry-${{ runner.os }}-
+
+      - name: Cache build artifacts
+        uses: actions/cache@v4
+        with:
+          path: target/
+          key: cargo-build-${{ runner.os }}-${{ env.RUSTUP_TOOLCHAIN }}-test-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            cargo-build-${{ runner.os }}-${{ env.RUSTUP_TOOLCHAIN }}-
+
+      - name: Run tests
+        env:
+          TEST_LOG: synqro=debug
+        run: cargo test --locked --all-features -- --nocapture
+
+      - name: Run doc tests
+        run: cargo test --locked --doc --all-features
+
+  # ─────────────────────────────────────────────────────────────
+  # JOB 4: build (reproducible build verification)
+  # Builds release binaries twice per target and compares hashes.
+  # ─────────────────────────────────────────────────────────────
+  build:
+    name: Build (${{ matrix.target }}, run ${{ matrix.build_run }})
+    needs: [audit, lint]
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+    env:
+      SOURCE_DATE_EPOCH: "0"
+      CARGO_INCREMENTAL: "0"
+      RUSTFLAGS: "-C metadata=SYNQRO_REPRO -C link-arg=-Wl,--build-id=none"
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-musl
+            runner: ubuntu-24.04
+            build_run: 1
+          - target: x86_64-unknown-linux-musl
+            runner: ubuntu-24.04
+            build_run: 2
+          - target: aarch64-unknown-linux-musl
+            runner: ubuntu-24.04
+            build_run: 1
+          - target: aarch64-unknown-linux-musl
+            runner: ubuntu-24.04
+            build_run: 2
+          - target: x86_64-apple-darwin
+            runner: macos-14
+            build_run: 1
+          - target: x86_64-apple-darwin
+            runner: macos-14
+            build_run: 2
+          - target: aarch64-apple-darwin
+            runner: macos-14
+            build_run: 1
+          - target: aarch64-apple-darwin
+            runner: macos-14
+            build_run: 2
+          - target: x86_64-pc-windows-msvc
+            runner: windows-2022
+            build_run: 1
+          - target: x86_64-pc-windows-msvc
+            runner: windows-2022
+            build_run: 2
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Install Rust toolchain + target
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: ${{ env.RUSTUP_TOOLCHAIN }}
+          targets: ${{ matrix.target }}
+
+      - name: Install cross-compilation tools (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            musl-tools \
+            gcc-aarch64-linux-gnu
+
+      - name: Cache Cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: cargo-registry-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            cargo-registry-${{ runner.os }}-
+
+      - name: Build release binary
+        run: >
+          cargo build
+          --locked
+          --release
+          --target ${{ matrix.target }}
+
+      - name: Compute SHA-256 (Linux/macOS)
+        if: runner.os != 'Windows'
+        run: |
+          BIN="target/${{ matrix.target }}/release/synqro"
+          HASH=$(sha256sum "${BIN}" | awk '{print $1}')
+          echo "BINARY_SHA256=${HASH}" >> "${GITHUB_ENV}"
+
+      - name: Compute SHA-256 (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $hash = (Get-FileHash -Algorithm SHA256 "target\${{ matrix.target }}\release\synqro.exe").Hash.ToLower()
+          "BINARY_SHA256=$hash" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Write SHA-256 to file (Linux/macOS)
+        if: runner.os != 'Windows'
+        run: echo "${{ env.BINARY_SHA256 }}" > sha256-${{ matrix.target }}-run${{ matrix.build_run }}.txt
+
+      - name: Write SHA-256 to file (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          "${{ env.BINARY_SHA256 }}" | Out-File -FilePath "sha256-${{ matrix.target }}-run${{ matrix.build_run }}.txt" -NoNewline
+
+      - name: Upload SHA-256 file
+        uses: actions/upload-artifact@v4
+        with:
+          name: sha256-${{ matrix.target }}-run${{ matrix.build_run }}-${{ github.run_id }}
+          path: sha256-${{ matrix.target }}-run${{ matrix.build_run }}.txt
+
+      - name: Upload binary (run 1 only, for release job)
+        if: matrix.build_run == 1
+        uses: actions/upload-artifact@v4
+        with:
+          name: binary-${{ matrix.target }}-${{ github.run_id }}
+          path: |
+            target/${{ matrix.target }}/release/synqro
+            target/${{ matrix.target }}/release/synqro.exe
+          if-no-files-found: ignore
+          retention-days: 7
+
+  # ─────────────────────────────────────────────────────────────
+  # JOB 4b: compare-reproducibility
+  # Downloads both SHA-256 files per target and verifies they match.
+  # ─────────────────────────────────────────────────────────────
+  compare-reproducibility:
+    name: Verify Reproducible Build (${{ matrix.target }})
+    needs: [build]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - x86_64-unknown-linux-musl
+          - aarch64-unknown-linux-musl
+          - x86_64-apple-darwin
+          - aarch64-apple-darwin
+          - x86_64-pc-windows-msvc
+
+    steps:
+      - name: Download SHA-256 from run 1
+        uses: actions/download-artifact@v4
+        with:
+          name: sha256-${{ matrix.target }}-run1-${{ github.run_id }}
+          path: hashes/
+
+      - name: Download SHA-256 from run 2
+        uses: actions/download-artifact@v4
+        with:
+          name: sha256-${{ matrix.target }}-run2-${{ github.run_id }}
+          path: hashes/
+
+      - name: Compare hashes
+        run: |
+          HASH1=$(cat "hashes/sha256-${{ matrix.target }}-run1.txt")
+          HASH2=$(cat "hashes/sha256-${{ matrix.target }}-run2.txt")
+          echo "Run 1 SHA-256: ${HASH1}"
+          echo "Run 2 SHA-256: ${HASH2}"
+          if [ "${HASH1}" != "${HASH2}" ]; then
+            echo "::error::Reproducible build FAILED for ${{ matrix.target }}"
+            exit 1
+          fi
+          echo "Reproducible build PASSED for ${{ matrix.target }}."
+
+  # ─────────────────────────────────────────────────────────────
+  # JOB 5: sast-python
+  # Runs Bandit static analysis on Python scripts and reporter.
+  # ─────────────────────────────────────────────────────────────
+  sast-python:
+    name: Python SAST (Bandit)
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      security-events: write
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12.3"
+
+      - name: Install Bandit
+        run: pip install bandit==1.7.9
+
+      - name: Run Bandit
+        run: |
+          bandit \
+            -r scripts/ synqro/reporter/ \
+            -ll \
+            -f json \
+            -o bandit-report.json \
+            || true
+
+      - name: Upload Bandit report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bandit-report-${{ github.run_id }}
+          path: bandit-report.json
+          retention-days: 90
+
+      - name: Fail on HIGH or CRITICAL findings
+        run: |
+          python3 - <<'PYEOF'
+          import json, sys
+          with open("bandit-report.json") as f:
+              report = json.load(f)
+          findings = [
+              r for r in report.get("results", [])
+              if r.get("issue_severity", "").upper() in ("HIGH", "CRITICAL")
+          ]
+          if findings:
+              print(f"FAIL: {len(findings)} HIGH/CRITICAL finding(s):")
+              for r in findings:
+                  print(f"  [{r['issue_severity']}] {r['issue_text']} at {r['filename']}:{r['line_number']}")
+              sys.exit(1)
+          print("PASS: No HIGH or CRITICAL Bandit findings.")
+          PYEOF
+
+  # ─────────────────────────────────────────────────────────────
+  # JOB 6: sbom
+  # Generates a CycloneDX SBOM and signs it with Ed25519.
+  # ─────────────────────────────────────────────────────────────
+  sbom:
+    name: Generate & Sign SBOM (CycloneDX)
+    needs: [audit]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: ${{ env.RUSTUP_TOOLCHAIN }}
+
+      - name: Cache Cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: cargo-registry-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            cargo-registry-${{ runner.os }}-
+
+      - name: Install cargo-cyclonedx
+        run: cargo install cargo-cyclonedx --locked --version =0.5.5
+
+      - name: Generate SBOM
+        run: cargo cyclonedx --format json --output-file synqro-sbom.cdx.json
+
+      - name: Sign SBOM with Ed25519
+        env:
+          SYNQRO_SIGNING_KEY: ${{ secrets.SYNQRO_SIGNING_KEY }}
+          SYNQRO_SIGNING_KEY_PUB: ${{ secrets.SYNQRO_SIGNING_KEY_PUB }}
+        run: |
+          mkdir -p /dev/shm/synqro_ci_signing && chmod 700 /dev/shm/synqro_ci_signing
+          echo "${SYNQRO_SIGNING_KEY}" | base64 -d > /dev/shm/synqro_ci_signing/key.pem
+
+          openssl pkeyutl \
+            -sign \
+            -inkey /dev/shm/synqro_ci_signing/key.pem \
+            -rawin \
+            -in synqro-sbom.cdx.json \
+            | base64 --wrap=0 > synqro-sbom.cdx.json.sig
+
+          echo "${SYNQRO_SIGNING_KEY_PUB}" | base64 -d > /dev/shm/synqro_ci_signing/pub.pem
+          openssl pkeyutl \
+            -verify \
+            -pubin \
+            -inkey /dev/shm/synqro_ci_signing/pub.pem \
+            -rawin \
+            -in synqro-sbom.cdx.json \
+            -sigfile <(cat synqro-sbom.cdx.json.sig | base64 -d)
+
+          shred -u /dev/shm/synqro_ci_signing/key.pem /dev/shm/synqro_ci_signing/pub.pem
+          rmdir /dev/shm/synqro_ci_signing
+
+      - name: Upload SBOM and signature
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom-${{ github.run_id }}
+          path: |
+            synqro-sbom.cdx.json
+            synqro-sbom.cdx.json.sig
+          retention-days: 365

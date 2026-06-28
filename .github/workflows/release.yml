@@ -1,0 +1,423 @@
+# .github/workflows/release.yml
+# Synqro — Release Pipeline
+# Triggered on version tags (e.g., v0.1.0, v1.2.3).
+# Publishes to: crates.io · PyPI · pub.dev · GitHub Releases
+#
+# Required GitHub Secrets:
+#   SYNQRO_SIGNING_KEY       — Base64-encoded Ed25519 private key (PKCS#8 PEM)
+#   SYNQRO_SIGNING_KEY_PUB   — Base64-encoded Ed25519 public key
+#   CARGO_REGISTRY_TOKEN     — crates.io API token
+#   PYPI_API_TOKEN           — PyPI API token (generate at pypi.org/manage/account/token/)
+#   PUB_DEV_CREDENTIALS      — pub.dev credentials JSON (see setup instructions below)
+#
+# To get PUB_DEV_CREDENTIALS:
+#   Run `dart pub token add https://pub.dev` locally, then copy
+#   the resulting ~/.pub-cache/credentials.json content as the secret value.
+
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  RUST_BACKTRACE: 1
+  CARGO_TERM_COLOR: always
+  RUSTUP_TOOLCHAIN: "1.78.0"
+  SOURCE_DATE_EPOCH: "0"
+  CARGO_INCREMENTAL: "0"
+  RUSTFLAGS: "-C metadata=SYNQRO_REPRO -C link-arg=-Wl,--build-id=none"
+
+jobs:
+
+  # ─────────────────────────────────────────────────────────────
+  # Run all CI checks before any publishing step.
+  # ─────────────────────────────────────────────────────────────
+  ci:
+    name: CI Gate
+    uses: ./.github/workflows/ci.yml
+    secrets: inherit
+
+  # ─────────────────────────────────────────────────────────────
+  # JOB: build-release-artifacts
+  # Build signed, checksummed archives for all 5 platforms.
+  # ─────────────────────────────────────────────────────────────
+  build-release-artifacts:
+    name: Build Release Artifact (${{ matrix.artifact_name }})
+    needs: [ci]
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-musl
+            runner: ubuntu-24.04
+            artifact_name: synqro-linux-x86_64
+            binary: synqro
+            archive_ext: tar.gz
+          - target: aarch64-unknown-linux-musl
+            runner: ubuntu-24.04
+            artifact_name: synqro-linux-aarch64
+            binary: synqro
+            archive_ext: tar.gz
+          - target: x86_64-apple-darwin
+            runner: macos-14
+            artifact_name: synqro-darwin-x86_64
+            binary: synqro
+            archive_ext: tar.gz
+          - target: aarch64-apple-darwin
+            runner: macos-14
+            artifact_name: synqro-darwin-aarch64
+            binary: synqro
+            archive_ext: tar.gz
+          - target: x86_64-pc-windows-msvc
+            runner: windows-2022
+            artifact_name: synqro-windows-x86_64
+            binary: synqro.exe
+            archive_ext: zip
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Install Rust toolchain + target
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: ${{ env.RUSTUP_TOOLCHAIN }}
+          targets: ${{ matrix.target }}
+
+      - name: Install cross-compilation tools (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            musl-tools \
+            gcc-aarch64-linux-gnu
+
+      - name: Cache Cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: cargo-registry-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            cargo-registry-${{ runner.os }}-
+
+      - name: Build release binary
+        run: >
+          cargo build
+          --locked
+          --release
+          --target ${{ matrix.target }}
+
+      - name: Package artifact (Linux/macOS)
+        if: runner.os != 'Windows'
+        run: |
+          ARCHIVE="${{ matrix.artifact_name }}-${{ github.ref_name }}.${{ matrix.archive_ext }}"
+          tar czf "${ARCHIVE}" \
+            -C "target/${{ matrix.target }}/release" \
+            "${{ matrix.binary }}" \
+            -C "${GITHUB_WORKSPACE}" \
+            README.md SECURITY.md LICENSE
+          echo "ARCHIVE_NAME=${ARCHIVE}" >> "${GITHUB_ENV}"
+
+      - name: Package artifact (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $archive = "${{ matrix.artifact_name }}-${{ github.ref_name }}.${{ matrix.archive_ext }}"
+          Compress-Archive -Path `
+            "target\${{ matrix.target }}\release\${{ matrix.binary }}", `
+            "README.md", "SECURITY.md", "LICENSE" `
+            -DestinationPath $archive
+          "ARCHIVE_NAME=$archive" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Compute checksums (Linux/macOS)
+        if: runner.os != 'Windows'
+        run: |
+          sha256sum "${{ env.ARCHIVE_NAME }}" | tee "${{ env.ARCHIVE_NAME }}.sha256"
+          sha512sum "${{ env.ARCHIVE_NAME }}" | tee "${{ env.ARCHIVE_NAME }}.sha512"
+
+      - name: Compute checksums (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $h256 = (Get-FileHash -Algorithm SHA256 "${{ env.ARCHIVE_NAME }}").Hash.ToLower()
+          "$h256  ${{ env.ARCHIVE_NAME }}" | Out-File -FilePath "${{ env.ARCHIVE_NAME }}.sha256"
+          $h512 = (Get-FileHash -Algorithm SHA512 "${{ env.ARCHIVE_NAME }}").Hash.ToLower()
+          "$h512  ${{ env.ARCHIVE_NAME }}" | Out-File -FilePath "${{ env.ARCHIVE_NAME }}.sha512"
+
+      - name: Sign artifact with Ed25519 (Linux/macOS)
+        if: runner.os != 'Windows'
+        env:
+          SYNQRO_SIGNING_KEY: ${{ secrets.SYNQRO_SIGNING_KEY }}
+        run: |
+          mkdir -p /dev/shm/synqro_release && chmod 700 /dev/shm/synqro_release
+          echo "${SYNQRO_SIGNING_KEY}" | base64 -d > /dev/shm/synqro_release/key.pem
+          openssl pkeyutl \
+            -sign \
+            -inkey /dev/shm/synqro_release/key.pem \
+            -rawin \
+            -in "${{ env.ARCHIVE_NAME }}" \
+            | base64 --wrap=0 > "${{ env.ARCHIVE_NAME }}.sig"
+          shred -u /dev/shm/synqro_release/key.pem
+          rmdir /dev/shm/synqro_release
+
+      - name: Sign artifact with Ed25519 (Windows)
+        if: runner.os == 'Windows'
+        shell: bash
+        env:
+          SYNQRO_SIGNING_KEY: ${{ secrets.SYNQRO_SIGNING_KEY }}
+          ARCHIVE_NAME: ${{ env.ARCHIVE_NAME }}
+        run: bash scripts/sign-artifact.sh "${ARCHIVE_NAME}"
+
+      - name: Upload packaged artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-artifact-${{ matrix.artifact_name }}-${{ github.run_id }}
+          path: |
+            ${{ env.ARCHIVE_NAME }}
+            ${{ env.ARCHIVE_NAME }}.sha256
+            ${{ env.ARCHIVE_NAME }}.sha512
+            ${{ env.ARCHIVE_NAME }}.sig
+          retention-days: 7
+
+  # ─────────────────────────────────────────────────────────────
+  # JOB: publish-crates-io
+  # Publishes the Rust crate to crates.io.
+  # Requires: CARGO_REGISTRY_TOKEN secret.
+  # ─────────────────────────────────────────────────────────────
+  publish-crates-io:
+    name: Publish to crates.io
+    needs: [ci]
+    runs-on: ubuntu-24.04
+    environment: crates-io
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: ${{ env.RUSTUP_TOOLCHAIN }}
+
+      - name: Cache Cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: cargo-registry-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            cargo-registry-${{ runner.os }}-
+
+      - name: Publish to crates.io
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: cargo publish --locked --no-verify
+
+  # ─────────────────────────────────────────────────────────────
+  # JOB: publish-pypi
+  # Builds and uploads the Python wheel + sdist to PyPI.
+  # Requires: PYPI_API_TOKEN secret (or use Trusted Publisher / OIDC).
+  # ─────────────────────────────────────────────────────────────
+  publish-pypi:
+    name: Publish to PyPI
+    needs: [ci]
+    runs-on: ubuntu-24.04
+    environment: pypi
+    permissions:
+      contents: read
+      id-token: write   # Required for OIDC Trusted Publisher (preferred over token)
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install build tools
+        run: |
+          python -m pip install --upgrade pip
+          pip install build twine
+
+      - name: Build wheel and sdist
+        run: python -m build
+
+      - name: Check distribution
+        run: twine check dist/*
+
+      - name: Publish to PyPI (OIDC Trusted Publisher)
+        # Preferred: no API token needed — uses GitHub OIDC.
+        # Set up Trusted Publisher at: https://pypi.org/manage/project/synqro/settings/publishing/
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          # Remove the next two lines if using OIDC Trusted Publisher (recommended)
+          password: ${{ secrets.PYPI_API_TOKEN }}
+          skip-existing: true
+
+  # ─────────────────────────────────────────────────────────────
+  # JOB: publish-pub-dev
+  # Publishes the Dart package to pub.dev.
+  # Requires: PUB_DEV_CREDENTIALS secret.
+  #
+  # To generate credentials:
+  #   1. Run: dart pub token add https://pub.dev
+  #   2. Authenticate in browser
+  #   3. Copy ~/.pub-cache/credentials.json → GitHub secret PUB_DEV_CREDENTIALS
+  # ─────────────────────────────────────────────────────────────
+  publish-pub-dev:
+    name: Publish to pub.dev
+    needs: [ci]
+    runs-on: ubuntu-24.04
+    environment: pub-dev
+    permissions:
+      contents: read
+      id-token: write   # For pub.dev OIDC (dart pub publish --force)
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Dart SDK (stable)
+        uses: dart-lang/setup-dart@v1
+        with:
+          sdk: stable
+
+      - name: Restore pub.dev credentials
+        env:
+          PUB_DEV_CREDENTIALS: ${{ secrets.PUB_DEV_CREDENTIALS }}
+        run: |
+          mkdir -p "${HOME}/.pub-cache"
+          echo "${PUB_DEV_CREDENTIALS}" > "${HOME}/.pub-cache/credentials.json"
+          chmod 600 "${HOME}/.pub-cache/credentials.json"
+
+      - name: Validate Dart package
+        working-directory: ffi/dart
+        run: |
+          dart pub get
+          dart analyze --fatal-infos
+          dart pub publish --dry-run
+
+      - name: Publish to pub.dev
+        working-directory: ffi/dart
+        run: dart pub publish --force
+
+      - name: Wipe credentials
+        if: always()
+        run: shred -u "${HOME}/.pub-cache/credentials.json" || rm -f "${HOME}/.pub-cache/credentials.json"
+
+  # ─────────────────────────────────────────────────────────────
+  # JOB: create-github-release
+  # Assembles all artifacts and creates the GitHub Release.
+  # ─────────────────────────────────────────────────────────────
+  create-github-release:
+    name: Publish GitHub Release
+    needs: [build-release-artifacts, publish-crates-io, publish-pypi, publish-pub-dev]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      id-token: write   # For SLSA provenance attestation
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Download all release artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: release-artifact-*-${{ github.run_id }}
+          merge-multiple: true
+          path: dist/
+
+      - name: Download SBOM artifact
+        uses: actions/download-artifact@v4
+        with:
+          pattern: sbom-*
+          merge-multiple: true
+          path: dist/
+
+      - name: Extract release notes from CHANGELOG.md
+        run: |
+          VERSION="${{ github.ref_name }}"
+          VERSION_NO_V="${VERSION#v}"
+
+          python3 - "${VERSION_NO_V}" <<'PYEOF'
+          import sys, re, pathlib
+
+          version = sys.argv[1]
+          changelog_path = pathlib.Path("CHANGELOG.md")
+
+          if not changelog_path.exists():
+              notes = f"## Synqro {version}\n\nSee the repository for details.\n"
+              pathlib.Path("release_notes.md").write_text(notes, encoding="utf-8")
+              print(f"No CHANGELOG.md found; using placeholder notes.")
+              sys.exit(0)
+
+          changelog = changelog_path.read_text(encoding="utf-8")
+          pattern = rf"## \[{re.escape(version)}\].*?(?=\n## \[|\Z)"
+          match = re.search(pattern, changelog, re.DOTALL)
+
+          if not match:
+              notes = f"## Synqro {version}\n\nSee CHANGELOG.md for details.\n"
+          else:
+              notes = match.group(0).strip()
+
+          pathlib.Path("release_notes.md").write_text(notes, encoding="utf-8")
+          print(f"Extracted release notes for {version}.")
+          PYEOF
+
+      - name: List dist/ contents
+        run: ls -lah dist/
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: "Synqro ${{ github.ref_name }}"
+          body_path: release_notes.md
+          draft: false
+          prerelease: ${{ contains(github.ref_name, '-beta') || contains(github.ref_name, '-rc') || contains(github.ref_name, '-canary') }}
+          fail_on_unmatched_files: false
+          files: |
+            dist/*.tar.gz
+            dist/*.zip
+            dist/*.sha256
+            dist/*.sha512
+            dist/*.sig
+            dist/synqro-sbom.cdx.json
+            dist/synqro-sbom.cdx.json.sig
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Generate SLSA provenance attestation
+        uses: actions/attest-build-provenance@v1
+        with:
+          subject-path: "dist/*.tar.gz,dist/*.zip"
