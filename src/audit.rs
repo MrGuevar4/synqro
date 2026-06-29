@@ -228,6 +228,7 @@ pub struct AuditLogLine {
 /// Thread-safe: uses a `Mutex<File>` to serialise writes.  On Linux, a POSIX
 /// `flock` additionally serialises writes from multiple processes sharing the
 /// same log file (e.g. watchdog process).
+#[derive(Debug)]
 pub struct AuditLogger {
     log_path: PathBuf,
     /// 32-byte HMAC key derived via HKDF-SHA256 from the installation_id.

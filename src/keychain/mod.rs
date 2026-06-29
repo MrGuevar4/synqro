@@ -83,7 +83,7 @@ pub trait KeychainProvider: Send + Sync {
 /// Construct the appropriate `KeychainProvider` for the current OS at runtime.
 ///
 /// The selection is determined by `#[cfg(target_os = …)]` at compile time — only one
-/// branch is compiled into any given binary.  Returns `Err(SynqroError::Permission)` if
+/// branch is compiled into any given binary.  Returns `Err(SynqroError::Permission("unsupported platform".into()))` if
 /// the platform has no supported secure store.
 ///
 /// # Errors
@@ -123,5 +123,5 @@ pub fn platform_keychain() -> Result<Box<dyn KeychainProvider>, SynqroError> {
     // SECURITY: No unsupported-platform fallback — we refuse to operate rather than
     // silently degrading to an insecure storage mechanism.
     #[allow(unreachable_code)]
-    Err(SynqroError::Permission)
+    Err(SynqroError::Permission("unsupported platform".into()))
 }

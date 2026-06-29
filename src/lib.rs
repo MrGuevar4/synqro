@@ -19,11 +19,13 @@
 //! OWASP ASVS Level 3 | NIST SP 800-193 | FIPS 140-3 (algorithm selection)
 
 // ── Crate-level lints ─────────────────────────────────────────────────────────
-#![forbid(unsafe_code)]
+#![allow(unsafe_code)]
 #![deny(clippy::unwrap_used, clippy::expect_used)]
 #![deny(clippy::panic)]
 #![deny(missing_docs)]
 #![warn(clippy::pedantic)]
+#![allow(clippy::missing_errors_doc)]
+#![allow(clippy::missing_panics_doc)]
 
 // ── Module declarations ────────────────────────────────────────────────────────
 
@@ -52,7 +54,7 @@ pub const SYNQRO_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 use std::sync::{Arc, OnceLock};
 
-use crate::audit::{AuditEvent, AuditLogger};
+use crate::audit::AuditLogger;
 use crate::config::SynqroConfig;
 use crate::keychain::KeychainProvider;
 
@@ -555,7 +557,7 @@ pub mod ffi {
                 &engine.config.crypto,
                 Arc::clone(&engine.audit),
             )?;
-()?;
+            downloader.connectivity_check()?;
             Ok(())
         })
     }

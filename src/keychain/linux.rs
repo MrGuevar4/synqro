@@ -70,7 +70,7 @@ impl LinuxKeychain {
         }
 
         error!("Neither secret-tool nor keyctl found; cannot initialise Linux keychain");
-        Err(SynqroError::Permission)
+        Err(SynqroError::Permission("neither secret-tool nor keyctl found".into()))
     }
 }
 
@@ -182,12 +182,12 @@ fn secret_tool_store(service: &str, account: &str, secret: &[u8]) -> Result<(), 
         .spawn()
         .map_err(|e| {
             error!(error = %e, "Failed to spawn secret-tool store");
-            SynqroError::Permission
+            SynqroError::Permission(e.to_string())
         })?;
 
     // Write the secret to the child's stdin, then close the pipe.
     {
-        let stdin = child.stdin.as_mut().ok_or(SynqroError::Internal)?;
+        let stdin = child.stdin.as_mut().ok_or_else(|| SynqroError::Internal("stdin not available".into()))?;
         stdin.write_all(secret).map_err(|e| {
             error!(error = %e, "Failed to write secret to secret-tool stdin");
             SynqroError::Keychain("stdin write failed".to_owned())
@@ -305,11 +305,11 @@ fn keyctl_store(service: &str, account: &str, secret: &[u8]) -> Result<(), Synqr
         .spawn()
         .map_err(|e| {
             error!(error = %e, "Failed to spawn keyctl padd");
-            SynqroError::Permission
+            SynqroError::Permission(e.to_string())
         })?;
 
     {
-        let stdin = child.stdin.as_mut().ok_or(SynqroError::Internal)?;
+        let stdin = child.stdin.as_mut().ok_or_else(|| SynqroError::Internal("stdin not available".into()))?;
         stdin.write_all(secret).map_err(|e| {
             error!(error = %e, "Failed to write secret to keyctl stdin");
             SynqroError::Keychain("stdin write failed".to_owned())
@@ -400,9 +400,9 @@ fn run_with_timeout(
     cmd: &mut Command,
     timeout: Duration,
 ) -> Result<std::process::Output, SynqroError> {
-    let mut child = cmd.spawn().map_err(|e| {
+    let child = cmd.spawn().map_err(|e| {
         error!(error = %e, "Failed to spawn subprocess");
-        SynqroError::Permission
+        SynqroError::Permission(e.to_string())
     })?;
 
     wait_with_timeout(child, timeout)
@@ -410,7 +410,7 @@ fn run_with_timeout(
 
 /// Wait for an already-spawned `Child` with a hard timeout.
 fn wait_with_timeout(
-    mut child: std::process::Child,
+    child: std::process::Child,
     timeout: Duration,
 ) -> Result<std::process::Output, SynqroError> {
     // Use a thread + channel pattern: the worker thread calls `wait_with_output()`

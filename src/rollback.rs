@@ -19,8 +19,8 @@
 
 #![forbid(unsafe_code)]
 
-use std::fs::{self, DirBuilder, File, OpenOptions};
-use std::io::{BufReader, Write};
+use std::fs::{self, DirBuilder, File};
+use std::io::Write;
 use std::path::{Component, Path, PathBuf};
 
 use chrono::Utc;

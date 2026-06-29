@@ -385,7 +385,7 @@ impl SynqroDownloader {
     /// `base_secs * 2^retry + U(0, base_secs)`, capped at `MAX_BACKOFF_SECS`.
     fn backoff_duration(&self, retry: u32) -> Duration {
         let base = self.update_config.retry_backoff_base_seconds;
-        let exp = base.saturating_mul(1u64.saturating_shl(retry.min(30)));
+        let exp = base.saturating_mul(1u64 << retry.min(30));
         let jitter = rand::thread_rng().gen_range(0..=base);
         let secs = exp.saturating_add(jitter).min(MAX_BACKOFF_SECS);
         Duration::from_secs(secs)
@@ -403,8 +403,21 @@ impl SynqroDownloader {
     /// 3. Verify Ed25519 signature over canonical JSON.
     /// 4. **Only then** parse manifest content.
     /// 5. Verify `installation_id` (if present) matches the local one.
-    #[tokio::main(flavor = "current_thread")]
     pub fn fetch_and_verify_manifest(
+        &self,
+        keychain: &dyn KeychainProvider,
+    ) -> Result<SynqroManifest, SynqroError> {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .map_err(|e| SynqroError::Internal(format!("Tokio runtime build: {}", e)))?;
+
+        runtime.block_on(async {
+            self.fetch_and_verify_manifest_internal(keychain).await
+        })
+    }
+
+    async fn fetch_and_verify_manifest_internal(
         &self,
         keychain: &dyn KeychainProvider,
     ) -> Result<SynqroManifest, SynqroError> {
@@ -417,10 +430,10 @@ impl SynqroDownloader {
             if retry > 0 {
                 let delay = self.backoff_duration(retry - 1);
                 info!(retry = retry, delay_secs = delay.as_secs(), "Retrying manifest fetch");
-                std::thread::sleep(delay);
+                tokio::time::sleep(delay).await;
             }
 
-            match self.fetch_manifest_once(keychain) {
+            match self.fetch_manifest_once_async(keychain).await {
                 Ok(manifest) => {
                     self.record_success();
                     return Ok(manifest);
@@ -436,7 +449,7 @@ impl SynqroDownloader {
         Err(last_err)
     }
 
-    fn fetch_manifest_once(
+    async fn fetch_manifest_once_async(
         &self,
         keychain: &dyn KeychainProvider,
     ) -> Result<SynqroManifest, SynqroError> {
@@ -463,48 +476,41 @@ impl SynqroDownloader {
             HeaderValue::from_static("application/vnd.github.v3.raw"),
         );
 
-        let runtime = tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .map_err(|e| SynqroError::Internal(format!("Tokio runtime build failed: {}", e)))?;
+        let resp = self
+            .client
+            .get(&url)
+            .headers(headers)
+            .send()
+            .await
+            .map_err(|e| SynqroError::Network(format!("Manifest request failed: {}", e)))?;
 
-        let raw_bytes: Vec<u8> = runtime.block_on(async {
-            let resp = self
-                .client
-                .get(&url)
-                .headers(headers)
-                .send()
-                .await
-                .map_err(|e| SynqroError::Network(format!("Manifest request failed: {}", e)))?;
+        // Parse Retry-After on 429/503.
+        if resp.status() == reqwest::StatusCode::TOO_MANY_REQUESTS
+            || resp.status() == reqwest::StatusCode::SERVICE_UNAVAILABLE
+        {
+            let retry_after = resp
+                .headers()
+                .get("Retry-After")
+                .and_then(|v| v.to_str().ok())
+                .and_then(|s| s.parse::<u64>().ok())
+                .unwrap_or(60);
+            return Err(SynqroError::Network(format!(
+                "Rate limited; retry after {}s",
+                retry_after
+            )));
+        }
 
-            // Parse Retry-After on 429/503.
-            if resp.status() == reqwest::StatusCode::TOO_MANY_REQUESTS
-                || resp.status() == reqwest::StatusCode::SERVICE_UNAVAILABLE
-            {
-                let retry_after = resp
-                    .headers()
-                    .get("Retry-After")
-                    .and_then(|v| v.to_str().ok())
-                    .and_then(|s| s.parse::<u64>().ok())
-                    .unwrap_or(60);
-                return Err(SynqroError::Network(format!(
-                    "Rate limited; retry after {}s",
-                    retry_after
-                )));
-            }
+        if !resp.status().is_success() {
+            return Err(SynqroError::Network(format!(
+                "HTTP {} fetching manifest",
+                resp.status()
+            )));
+        }
 
-            if !resp.status().is_success() {
-                return Err(SynqroError::Network(format!(
-                    "HTTP {} fetching manifest",
-                    resp.status()
-                )));
-            }
-
-            resp.bytes()
-                .await
-                .map(|b| b.to_vec())
-                .map_err(|e| SynqroError::Network(format!("Reading manifest body: {}", e)))
-        })?;
+        let raw_bytes = resp.bytes()
+            .await
+            .map(|b| b.to_vec())
+            .map_err(|e| SynqroError::Network(format!("Reading manifest body: {}", e)))?;
 
         // ── Step 2: Anti-replay — issued_at within last 24 hours ────────────
         // We parse the `issued_at` field from the raw bytes WITHOUT deserialising
@@ -651,7 +657,7 @@ impl SynqroDownloader {
             .build()
             .map_err(|e| SynqroError::Internal(format!("Tokio runtime build: {}", e)))?;
 
-        let downloaded_bytes: Vec<u8> = runtime.block_on(async {
+        let downloaded_bytes_res = runtime.block_on(async {
             let resp = self
                 .client
                 .get(&artifact_url)
@@ -683,13 +689,12 @@ impl SynqroDownloader {
                 }
                 buf.extend_from_slice(&bytes);
             }
-            Ok(buf)
+            Ok::<Vec<u8>, SynqroError>(buf)
         });
 
-        let downloaded_bytes = match downloaded_bytes {
+        let downloaded_bytes = match downloaded_bytes_res {
             Ok(b) => b,
             Err(e) => {
-                // Clean up any partial temp file.
                 let _ = std::fs::remove_file(&temp_path);
                 self.record_failure();
                 return Err(e);
