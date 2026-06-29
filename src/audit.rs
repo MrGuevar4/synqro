@@ -396,7 +396,11 @@ impl AuditLogger {
 
         for (line_no, line_result) in reader.lines().enumerate() {
             let line = line_result.map_err(|e| {
-                SynqroError::Internal(format!("Read error at line {}: {}", line_no.saturating_add(1), e))
+                SynqroError::Internal(format!(
+                    "Read error at line {}: {}",
+                    line_no.saturating_add(1),
+                    e
+                ))
             })?;
 
             if line.trim().is_empty() {
@@ -404,7 +408,11 @@ impl AuditLogger {
             }
 
             let log_line: AuditLogLine = serde_json::from_str(&line).map_err(|e| {
-                SynqroError::InvalidInput(format!("Line {} is not valid JSON: {}", line_no.saturating_add(1), e))
+                SynqroError::InvalidInput(format!(
+                    "Line {} is not valid JSON: {}",
+                    line_no.saturating_add(1),
+                    e
+                ))
             })?;
 
             // Reconstruct the payload without line_hmac.

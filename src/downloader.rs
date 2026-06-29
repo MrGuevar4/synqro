@@ -354,7 +354,10 @@ impl SynqroDownloader {
     }
 
     fn record_failure(&self) {
-        let count = self.consecutive_failures.fetch_add(1, Ordering::AcqRel).saturating_add(1);
+        let count = self
+            .consecutive_failures
+            .fetch_add(1, Ordering::AcqRel)
+            .saturating_add(1);
         if count >= DEGRADED_THRESHOLD {
             self.degraded_mode.store(true, Ordering::Release);
             let _ = self.audit.log(
