@@ -354,7 +354,7 @@ impl SynqroDownloader {
     }
 
     fn record_failure(&self) {
-        let count = self.consecutive_failures.fetch_add(1, Ordering::AcqRel) + 1;
+        let count = self.consecutive_failures.fetch_add(1, Ordering::AcqRel).saturating_add(1);
         if count >= DEGRADED_THRESHOLD {
             self.degraded_mode.store(true, Ordering::Release);
             let _ = self.audit.log(
@@ -420,7 +420,7 @@ impl SynqroDownloader {
 
         for retry in 0..=max_retries {
             if retry > 0 {
-                let delay = self.backoff_duration(retry - 1);
+                let delay = self.backoff_duration(retry.saturating_sub(1));
                 info!(
                     retry = retry,
                     delay_secs = delay.as_secs(),
@@ -681,7 +681,7 @@ impl SynqroDownloader {
             while let Some(chunk) = stream.next().await {
                 let bytes =
                     chunk.map_err(|e| SynqroError::Network(format!("Stream read error: {}", e)))?;
-                if buf.len() + bytes.len() > max_bytes as usize {
+                if buf.len().saturating_add(bytes.len()) > max_bytes as usize {
                     return Err(SynqroError::InvalidInput(format!(
                         "Artifact exceeds max_payload_size_bytes ({})",
                         max_bytes
