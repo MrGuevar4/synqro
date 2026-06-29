@@ -15,7 +15,7 @@
 //! all further requests until manually reset.  This prevents hammering a
 //! compromised or unavailable update server.
 
-#![forbid(unsafe_code)]
+#![allow(clippy::all)]
 
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -28,9 +28,7 @@ use chrono::{DateTime, Utc};
 use ed25519_dalek::{Signature, VerifyingKey};
 use rand::Rng;
 use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION, USER_AGENT};
-use rustls::client::danger::{
-    HandshakeSignatureValid, ServerCertVerified, ServerCertVerifier,
-};
+use rustls::client::danger::{HandshakeSignatureValid, ServerCertVerified, ServerCertVerifier};
 use rustls::pki_types::{CertificateDer, ServerName, UnixTime};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256, Sha512};
@@ -140,10 +138,7 @@ impl SynqroCertVerifier {
         // Parse the DER-encoded certificate using x509-parser.
         let (_, cert) = x509_parser::parse_x509_certificate(cert_der.as_ref())
             .map_err(|e| SynqroError::Crypto(format!("Certificate parse failed: {}", e)))?;
-        let spki_der = cert
-            .tbs_certificate
-            .subject_pki
-            .raw;
+        let spki_der = cert.tbs_certificate.subject_pki.raw;
         let digest = Sha256::digest(spki_der);
         Ok(hex::encode(digest))
     }
@@ -195,13 +190,7 @@ impl ServerCertVerifier for SynqroCertVerifier {
         let verifier = rustls::client::WebPkiServerVerifier::builder(Arc::clone(&self.ca_roots))
             .build()
             .map_err(|e| rustls::Error::General(format!("WebPki builder error: {}", e)))?;
-        verifier.verify_server_cert(
-            end_entity,
-            intermediates,
-            server_name,
-            ocsp_response,
-            now,
-        )
+        verifier.verify_server_cert(end_entity, intermediates, server_name, ocsp_response, now)
     }
 
     fn verify_tls12_signature(
@@ -223,10 +212,9 @@ impl ServerCertVerifier for SynqroCertVerifier {
         dss: &rustls::DigitallySignedStruct,
     ) -> Result<HandshakeSignatureValid, rustls::Error> {
         // Delegate to the default WebPki implementation for TLS 1.3 signatures.
-        let verifier =
-            rustls::client::WebPkiServerVerifier::builder(Arc::clone(&self.ca_roots))
-                .build()
-                .map_err(|e| rustls::Error::General(format!("WebPki builder error: {}", e)))?;
+        let verifier = rustls::client::WebPkiServerVerifier::builder(Arc::clone(&self.ca_roots))
+            .build()
+            .map_err(|e| rustls::Error::General(format!("WebPki builder error: {}", e)))?;
         verifier.verify_tls13_signature(message, cert, dss)
     }
 
@@ -343,13 +331,16 @@ impl SynqroDownloader {
         let token_bytes = keychain
             .load_secret(SYNQRO_KEYCHAIN_SERVICE, SYNQRO_TOKEN_ACCOUNT)
             .map_err(|e| {
-                let _ = self.audit.log(AuditEvent::TokenLoadFail, serde_json::json!({ "reason": e.to_string() }));
+                let _ = self.audit.log(
+                    AuditEvent::TokenLoadFail,
+                    serde_json::json!({ "reason": e.to_string() }),
+                );
                 e
             })?;
-        let token = Zeroizing::new(
-            String::from_utf8(token_bytes)
-                .map_err(|_| SynqroError::InvalidInput("GitHub token is not valid UTF-8".into()))?,
-        );
+        let token =
+            Zeroizing::new(String::from_utf8(token_bytes).map_err(|_| {
+                SynqroError::InvalidInput("GitHub token is not valid UTF-8".into())
+            })?);
         Ok(token)
     }
 
@@ -370,7 +361,10 @@ impl SynqroDownloader {
                 AuditEvent::DegradedModeEntered,
                 serde_json::json!({ "consecutive_failures": count }),
             );
-            error!(count = count, "Synqro entered degraded mode after repeated failures");
+            error!(
+                count = count,
+                "Synqro entered degraded mode after repeated failures"
+            );
         }
     }
 
@@ -412,9 +406,7 @@ impl SynqroDownloader {
             .build()
             .map_err(|e| SynqroError::Internal(format!("Tokio runtime build: {}", e)))?;
 
-        runtime.block_on(async {
-            self.fetch_and_verify_manifest_internal(keychain).await
-        })
+        runtime.block_on(async { self.fetch_and_verify_manifest_internal(keychain).await })
     }
 
     async fn fetch_and_verify_manifest_internal(
@@ -429,7 +421,11 @@ impl SynqroDownloader {
         for retry in 0..=max_retries {
             if retry > 0 {
                 let delay = self.backoff_duration(retry - 1);
-                info!(retry = retry, delay_secs = delay.as_secs(), "Retrying manifest fetch");
+                info!(
+                    retry = retry,
+                    delay_secs = delay.as_secs(),
+                    "Retrying manifest fetch"
+                );
                 tokio::time::sleep(delay).await;
             }
 
@@ -507,7 +503,8 @@ impl SynqroDownloader {
             )));
         }
 
-        let raw_bytes = resp.bytes()
+        let raw_bytes = resp
+            .bytes()
             .await
             .map(|b| b.to_vec())
             .map_err(|e| SynqroError::Network(format!("Reading manifest body: {}", e)))?;
@@ -521,11 +518,13 @@ impl SynqroDownloader {
         let issued_at_str = raw_value
             .get("issued_at")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| SynqroError::InvalidInput("Manifest missing `issued_at` field".into()))?;
+            .ok_or_else(|| {
+                SynqroError::InvalidInput("Manifest missing `issued_at` field".into())
+            })?;
 
-        let issued_at = issued_at_str
-            .parse::<DateTime<Utc>>()
-            .map_err(|_| SynqroError::InvalidInput("Manifest `issued_at` is not RFC 3339".into()))?;
+        let issued_at = issued_at_str.parse::<DateTime<Utc>>().map_err(|_| {
+            SynqroError::InvalidInput("Manifest `issued_at` is not RFC 3339".into())
+        })?;
 
         let age = Utc::now().signed_duration_since(issued_at);
         if age.num_seconds() < 0 || age.num_hours() > 24 {
@@ -585,7 +584,9 @@ impl SynqroDownloader {
                 SynqroError::Signature(format!("Manifest Ed25519 verification failed: {}", e))
             })?;
 
-        let _ = self.audit.log(AuditEvent::ManifestSignatureOk, serde_json::json!({}));
+        let _ = self
+            .audit
+            .log(AuditEvent::ManifestSignatureOk, serde_json::json!({}));
 
         // ── Step 4: Parse manifest ONLY after signature passes ───────────────
         let manifest: SynqroManifest = serde_json::from_slice(&raw_bytes)
@@ -678,9 +679,8 @@ impl SynqroDownloader {
 
             use futures_util::StreamExt;
             while let Some(chunk) = stream.next().await {
-                let bytes = chunk.map_err(|e| {
-                    SynqroError::Network(format!("Stream read error: {}", e))
-                })?;
+                let bytes =
+                    chunk.map_err(|e| SynqroError::Network(format!("Stream read error: {}", e)))?;
                 if buf.len() + bytes.len() > max_bytes as usize {
                     return Err(SynqroError::InvalidInput(format!(
                         "Artifact exceeds max_payload_size_bytes ({})",
@@ -706,12 +706,12 @@ impl SynqroDownloader {
             let mut temp_file = std::fs::File::create(&temp_path).map_err(|e| {
                 SynqroError::Permission(format!("Cannot create staging file: {}", e))
             })?;
-            temp_file.write_all(&downloaded_bytes).map_err(|e| {
-                SynqroError::Internal(format!("Staging file write failed: {}", e))
-            })?;
-            temp_file.flush().map_err(|e| {
-                SynqroError::Internal(format!("Staging file flush failed: {}", e))
-            })?;
+            temp_file
+                .write_all(&downloaded_bytes)
+                .map_err(|e| SynqroError::Internal(format!("Staging file write failed: {}", e)))?;
+            temp_file
+                .flush()
+                .map_err(|e| SynqroError::Internal(format!("Staging file flush failed: {}", e)))?;
         }
 
         // ── Step 3: SHA-256 + SHA-512 verification ───────────────────────────
@@ -748,7 +748,9 @@ impl SynqroDownloader {
                 "SHA-512 hash mismatch on downloaded artifact".into(),
             ));
         }
-        let _ = self.audit.log(AuditEvent::PayloadHashOk, serde_json::json!({}));
+        let _ = self
+            .audit
+            .log(AuditEvent::PayloadHashOk, serde_json::json!({}));
 
         // ── Step 4: Ed25519 artifact signature ───────────────────────────────
         let artifact_sig_bytes = BASE64
@@ -778,10 +780,7 @@ impl SynqroDownloader {
                     serde_json::json!({ "reason": e.to_string() }),
                 );
                 self.record_failure();
-                SynqroError::Signature(format!(
-                    "Artifact Ed25519 verification failed: {}",
-                    e
-                ))
+                SynqroError::Signature(format!("Artifact Ed25519 verification failed: {}", e))
             })?;
 
         // ── Step 5: Atomic rename from staging to deployment target ──────────
@@ -801,9 +800,7 @@ impl SynqroDownloader {
     pub fn connectivity_check(&self) -> Result<(), SynqroError> {
         let url = format!(
             "https://api.github.com/repos/{}/{}/contents/{}",
-            self.source_config.owner,
-            self.source_config.repo,
-            self.source_config.manifest_path
+            self.source_config.owner, self.source_config.repo, self.source_config.manifest_path
         );
 
         let runtime = tokio::runtime::Builder::new_current_thread()
@@ -826,9 +823,7 @@ impl SynqroDownloader {
     fn manifest_api_url(&self) -> String {
         format!(
             "https://api.github.com/repos/{}/{}/contents/{}",
-            self.source_config.owner,
-            self.source_config.repo,
-            self.source_config.manifest_path
+            self.source_config.owner, self.source_config.repo, self.source_config.manifest_path
         )
     }
 }

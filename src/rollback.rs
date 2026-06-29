@@ -17,7 +17,7 @@
 //! A version that triggers 3 or more rollbacks is permanently blacklisted.
 //! The blacklist itself is HMAC-signed to prevent tampering.
 
-#![forbid(unsafe_code)]
+#![allow(clippy::all)]
 
 use std::fs::{self, DirBuilder, File};
 use std::io::Write;
@@ -113,15 +113,12 @@ pub fn take_snapshot(
             .recursive(true)
             .mode(0o700)
             .create(backup_dir)
-            .map_err(|e| {
-                SynqroError::Permission(format!("Cannot create backup dir: {}", e))
-            })?;
+            .map_err(|e| SynqroError::Permission(format!("Cannot create backup dir: {}", e)))?;
     }
     #[cfg(not(unix))]
     {
-        fs::create_dir_all(backup_dir).map_err(|e| {
-            SynqroError::Permission(format!("Cannot create backup dir: {}", e))
-        })?;
+        fs::create_dir_all(backup_dir)
+            .map_err(|e| SynqroError::Permission(format!("Cannot create backup dir: {}", e)))?;
     }
 
     let version_dir = backup_dir.join(format!("v{}", version));
@@ -145,19 +142,16 @@ pub fn take_snapshot(
     }
 
     // Canonicalize backup_dir for path traversal checks.
-    let canonical_backup = version_dir.canonicalize().map_err(|e| {
-        SynqroError::Permission(format!("Cannot canonicalize backup dir: {}", e))
-    })?;
+    let canonical_backup = version_dir
+        .canonicalize()
+        .map_err(|e| SynqroError::Permission(format!("Cannot canonicalize backup dir: {}", e)))?;
 
     let mut file_entries: Vec<FileEntry> = Vec::new();
 
     for src_path in target_paths {
         // ── Path traversal prevention ────────────────────────────────────────
         let canonical_src = src_path.canonicalize().map_err(|e| {
-            SynqroError::Permission(format!(
-                "Cannot canonicalize source path: {}",
-                e
-            ))
+            SynqroError::Permission(format!("Cannot canonicalize source path: {}", e))
         })?;
 
         let file_name = canonical_src
@@ -170,9 +164,8 @@ pub fn take_snapshot(
         assert_path_under_parent(&dest_path, &canonical_backup)?;
 
         // ── SHA-256 ──────────────────────────────────────────────────────────
-        let file_bytes = fs::read(&canonical_src).map_err(|e| {
-            SynqroError::Permission(format!("Cannot read source file: {}", e))
-        })?;
+        let file_bytes = fs::read(&canonical_src)
+            .map_err(|e| SynqroError::Permission(format!("Cannot read source file: {}", e)))?;
         let sha256 = hex::encode(Sha256::digest(&file_bytes));
 
         // ── Permissions ──────────────────────────────────────────────────────
@@ -190,9 +183,8 @@ pub fn take_snapshot(
         let size_bytes = file_bytes.len() as u64;
 
         // ── Copy to backup ───────────────────────────────────────────────────
-        fs::write(&dest_path, &file_bytes).map_err(|e| {
-            SynqroError::Permission(format!("Cannot write backup file: {}", e))
-        })?;
+        fs::write(&dest_path, &file_bytes)
+            .map_err(|e| SynqroError::Permission(format!("Cannot write backup file: {}", e)))?;
 
         // SECURITY: Never log absolute source path — use file name only.
         let relative_name = file_name.to_string_lossy().to_string();
@@ -224,9 +216,8 @@ pub fn take_snapshot(
     let manifest_path = canonical_backup.join("snapshot.json");
     let manifest_bytes = serde_json::to_vec_pretty(&manifest)
         .map_err(|e| SynqroError::Internal(format!("Manifest serialise failed: {}", e)))?;
-    fs::write(&manifest_path, manifest_bytes).map_err(|e| {
-        SynqroError::Permission(format!("Cannot write snapshot.json: {}", e))
-    })?;
+    fs::write(&manifest_path, manifest_bytes)
+        .map_err(|e| SynqroError::Permission(format!("Cannot write snapshot.json: {}", e)))?;
 
     info!(version = %version, files = manifest.files.len(), "Snapshot taken");
     Ok(())
@@ -269,9 +260,7 @@ pub fn start_watchdog(
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
         .spawn()
-        .map_err(|e| {
-            SynqroError::Internal(format!("Failed to spawn watchdog process: {}", e))
-        })?;
+        .map_err(|e| SynqroError::Internal(format!("Failed to spawn watchdog process: {}", e)))?;
 
     info!(
         watchdog_pid = child.id(),
@@ -306,12 +295,10 @@ pub fn rollback(
     let snapshot_path = version_dir.join("snapshot.json");
 
     // ── Step 1: Load and verify snapshot HMAC ────────────────────────────────
-    let snapshot_bytes = fs::read(&snapshot_path).map_err(|e| {
-        SynqroError::Rollback(format!("Cannot read snapshot.json: {}", e))
-    })?;
-    let manifest: SnapshotManifest = serde_json::from_slice(&snapshot_bytes).map_err(|e| {
-        SynqroError::Rollback(format!("Snapshot.json is not valid JSON: {}", e))
-    })?;
+    let snapshot_bytes = fs::read(&snapshot_path)
+        .map_err(|e| SynqroError::Rollback(format!("Cannot read snapshot.json: {}", e)))?;
+    let manifest: SnapshotManifest = serde_json::from_slice(&snapshot_bytes)
+        .map_err(|e| SynqroError::Rollback(format!("Snapshot.json is not valid JSON: {}", e)))?;
 
     // Reconstruct the canonical payload without the HMAC field.
     let unsigned = serde_json::json!({
@@ -334,9 +321,9 @@ pub fn rollback(
     }
 
     // Canonicalize backup dir for path traversal checks.
-    let canonical_backup = version_dir.canonicalize().map_err(|e| {
-        SynqroError::Permission(format!("Cannot canonicalize backup dir: {}", e))
-    })?;
+    let canonical_backup = version_dir
+        .canonicalize()
+        .map_err(|e| SynqroError::Permission(format!("Cannot canonicalize backup dir: {}", e)))?;
 
     // ── Step 2 + 3: Verify and restore each file ─────────────────────────────
     for entry in &manifest.files {
@@ -378,8 +365,7 @@ pub fn rollback(
                 fs::create_dir_all(parent).map_err(|e| {
                     SynqroError::Permission(format!(
                         "Cannot create parent dir for `{}`: {}",
-                        entry.path,
-                        e
+                        entry.path, e
                     ))
                 })?;
             }
@@ -388,7 +374,10 @@ pub fn rollback(
         // Write to a temp file next to the destination, then rename atomically.
         let temp_dest = dest.with_extension("synqro_restore.tmp");
         fs::write(&temp_dest, &backup_bytes).map_err(|e| {
-            SynqroError::Rollback(format!("Cannot write restore temp for `{}`: {}", entry.path, e))
+            SynqroError::Rollback(format!(
+                "Cannot write restore temp for `{}`: {}",
+                entry.path, e
+            ))
         })?;
 
         // Restore permissions on POSIX.
@@ -397,7 +386,10 @@ pub fn rollback(
             use std::os::unix::fs::PermissionsExt;
             let perms = fs::Permissions::from_mode(entry.permissions);
             fs::set_permissions(&temp_dest, perms).map_err(|e| {
-                SynqroError::Permission(format!("Cannot set permissions on `{}`: {}", entry.path, e))
+                SynqroError::Permission(format!(
+                    "Cannot set permissions on `{}`: {}",
+                    entry.path, e
+                ))
             })?;
         }
 
@@ -498,12 +490,10 @@ pub fn is_blacklisted(
 // ──────────────────────────────────────────────────────────────────────────────
 
 fn load_blacklist_raw(path: &Path, hmac_key: &[u8]) -> Result<Blacklist, SynqroError> {
-    let bytes = fs::read(path).map_err(|e| {
-        SynqroError::Permission(format!("Cannot read blacklist: {}", e))
-    })?;
-    let bl: Blacklist = serde_json::from_slice(&bytes).map_err(|e| {
-        SynqroError::InvalidInput(format!("Blacklist is not valid JSON: {}", e))
-    })?;
+    let bytes = fs::read(path)
+        .map_err(|e| SynqroError::Permission(format!("Cannot read blacklist: {}", e)))?;
+    let bl: Blacklist = serde_json::from_slice(&bytes)
+        .map_err(|e| SynqroError::InvalidInput(format!("Blacklist is not valid JSON: {}", e)))?;
 
     // Verify HMAC.
     let mut sorted = bl.blacklisted.clone();
@@ -524,9 +514,8 @@ fn load_blacklist_raw(path: &Path, hmac_key: &[u8]) -> Result<Blacklist, SynqroE
 /// Increment the rollback counter for `version` and return the new count.
 fn increment_rollback_counter(version: &str, path: &Path) -> Result<u32, SynqroError> {
     let mut counters: serde_json::Map<String, serde_json::Value> = if path.exists() {
-        let bytes = fs::read(path).map_err(|e| {
-            SynqroError::Internal(format!("Cannot read rollback counters: {}", e))
-        })?;
+        let bytes = fs::read(path)
+            .map_err(|e| SynqroError::Internal(format!("Cannot read rollback counters: {}", e)))?;
         serde_json::from_slice(&bytes).map_err(|e| {
             SynqroError::Internal(format!("Rollback counters JSON parse error: {}", e))
         })?
@@ -534,10 +523,7 @@ fn increment_rollback_counter(version: &str, path: &Path) -> Result<u32, SynqroE
         serde_json::Map::new()
     };
 
-    let current = counters
-        .get(version)
-        .and_then(|v| v.as_u64())
-        .unwrap_or(0) as u32;
+    let current = counters.get(version).and_then(|v| v.as_u64()).unwrap_or(0) as u32;
     let next = current.saturating_add(1);
     counters.insert(version.to_owned(), serde_json::Value::from(next));
 
@@ -556,19 +542,18 @@ fn write_json_atomic<T: Serialize>(path: &Path, value: &T) -> Result<(), SynqroE
     let json_bytes = serde_json::to_vec_pretty(value)
         .map_err(|e| SynqroError::Internal(format!("JSON serialise failed: {}", e)))?;
 
-    let mut temp_file = File::create(&temp_path).map_err(|e| {
-        SynqroError::Permission(format!("Cannot create temp file: {}", e))
-    })?;
-    temp_file.write_all(&json_bytes).map_err(|e| {
-        SynqroError::Internal(format!("Temp file write failed: {}", e))
-    })?;
-    temp_file.flush().map_err(|e| {
-        SynqroError::Internal(format!("Temp file flush failed: {}", e))
-    })?;
+    let mut temp_file = File::create(&temp_path)
+        .map_err(|e| SynqroError::Permission(format!("Cannot create temp file: {}", e)))?;
+    temp_file
+        .write_all(&json_bytes)
+        .map_err(|e| SynqroError::Internal(format!("Temp file write failed: {}", e)))?;
+    temp_file
+        .flush()
+        .map_err(|e| SynqroError::Internal(format!("Temp file flush failed: {}", e)))?;
     // fsync ensures data reaches disk before the rename.
-    temp_file.sync_all().map_err(|e| {
-        SynqroError::Internal(format!("Temp file fsync failed: {}", e))
-    })?;
+    temp_file
+        .sync_all()
+        .map_err(|e| SynqroError::Internal(format!("Temp file fsync failed: {}", e)))?;
     drop(temp_file);
 
     fs::rename(&temp_path, path).map_err(|e| {

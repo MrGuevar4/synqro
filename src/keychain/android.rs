@@ -214,9 +214,7 @@ impl KeychainProvider for AndroidKeychain {
 
         let cbs = self.callbacks.lock().map_err(|_| SynqroError::Internal)?;
         let load_fn = cbs.load.ok_or_else(|| {
-            SynqroError::Keychain(
-                "Android Keystore: load JNI callback not registered".to_owned(),
-            )
+            SynqroError::Keychain("Android Keystore: load JNI callback not registered".to_owned())
         })?;
 
         // Allocate output buffer on the stack; bounded to SYNQRO_MAX_INPUT_LEN.
@@ -275,19 +273,12 @@ impl KeychainProvider for AndroidKeychain {
     ///
     /// # Errors
     /// - `SynqroError::Keychain` if JNI is not configured or the callback fails.
-    fn store_secret(
-        &self,
-        service: &str,
-        account: &str,
-        secret: &[u8],
-    ) -> Result<(), SynqroError> {
+    fn store_secret(&self, service: &str, account: &str, secret: &[u8]) -> Result<(), SynqroError> {
         let env = self.jni_env_or_err()?;
 
         let cbs = self.callbacks.lock().map_err(|_| SynqroError::Internal)?;
         let store_fn = cbs.store.ok_or_else(|| {
-            SynqroError::Keychain(
-                "Android Keystore: store JNI callback not registered".to_owned(),
-            )
+            SynqroError::Keychain("Android Keystore: store JNI callback not registered".to_owned())
         })?;
 
         // SECURITY: unsafe required for JNI interop with the Android Keystore.
@@ -337,9 +328,7 @@ impl KeychainProvider for AndroidKeychain {
 
         let cbs = self.callbacks.lock().map_err(|_| SynqroError::Internal)?;
         let delete_fn = cbs.delete.ok_or_else(|| {
-            SynqroError::Keychain(
-                "Android Keystore: delete JNI callback not registered".to_owned(),
-            )
+            SynqroError::Keychain("Android Keystore: delete JNI callback not registered".to_owned())
         })?;
 
         // SECURITY: unsafe required for JNI interop with the Android Keystore.

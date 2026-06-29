@@ -107,7 +107,7 @@ impl KeychainProvider for WindowsKeychain {
             let success = CredReadW(
                 target_wide.as_ptr(),
                 CRED_TYPE_GENERIC,
-                0,           // reserved — must be 0
+                0, // reserved — must be 0
                 &mut cred_ptr,
             );
 
@@ -172,12 +172,7 @@ impl KeychainProvider for WindowsKeychain {
     /// # Errors
     /// - `SynqroError::Keychain` if the write operation fails.
     #[cfg(target_os = "windows")]
-    fn store_secret(
-        &self,
-        service: &str,
-        account: &str,
-        secret: &[u8],
-    ) -> Result<(), SynqroError> {
+    fn store_secret(&self, service: &str, account: &str, secret: &[u8]) -> Result<(), SynqroError> {
         let target = credential_target_name(service, account);
         let target_wide = to_wide_null(&target);
         let username_wide = to_wide_null(account);
@@ -197,7 +192,10 @@ impl KeychainProvider for WindowsKeychain {
                 Type: CRED_TYPE_GENERIC,
                 TargetName: target_wide.as_ptr() as LPWSTR,
                 Comment: comment_wide.as_ptr() as LPWSTR,
-                LastWritten: winapi::shared::minwindef::FILETIME { dwLowDateTime: 0, dwHighDateTime: 0 },
+                LastWritten: winapi::shared::minwindef::FILETIME {
+                    dwLowDateTime: 0,
+                    dwHighDateTime: 0,
+                },
                 CredentialBlobSize: secret.len() as u32,
                 CredentialBlob: blob_ptr,
                 Persist: winapi::um::wincred::CRED_PERSIST_LOCAL_MACHINE,

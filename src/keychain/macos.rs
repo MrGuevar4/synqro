@@ -117,12 +117,7 @@ impl KeychainProvider for MacosKeychain {
     ///
     /// # Errors
     /// - `SynqroError::Keychain` if the store operation fails.
-    fn store_secret(
-        &self,
-        service: &str,
-        account: &str,
-        secret: &[u8],
-    ) -> Result<(), SynqroError> {
+    fn store_secret(&self, service: &str, account: &str, secret: &[u8]) -> Result<(), SynqroError> {
         // SECURITY: Direct Keychain Services API — no subprocess, no process table exposure.
         #[cfg(target_os = "macos")]
         {
@@ -212,8 +207,10 @@ fn macos_cli_load(service: &str, account: &str) -> Result<Vec<u8>, SynqroError> 
         Command::new("security")
             .args([
                 "find-generic-password",
-                "-s", service,
-                "-a", account,
+                "-s",
+                service,
+                "-a",
+                account,
                 "-w", // output only the password
             ])
             .stdin(Stdio::null())
@@ -256,10 +253,13 @@ fn macos_cli_store(service: &str, account: &str, secret: &[u8]) -> Result<(), Sy
         Command::new("security")
             .args([
                 "add-generic-password",
-                "-s", service,
-                "-a", account,
-                "-w", &secret_hex, // hex-encoded secret
-                "-U",              // update if exists
+                "-s",
+                service,
+                "-a",
+                account,
+                "-w",
+                &secret_hex, // hex-encoded secret
+                "-U",        // update if exists
             ])
             .stdin(Stdio::null())
             .stdout(Stdio::null())
@@ -284,11 +284,7 @@ fn macos_cli_delete(service: &str, account: &str) -> Result<(), SynqroError> {
     // SECURITY: argv-style — no shell, no metacharacter expansion.
     let output = run_with_timeout(
         Command::new("security")
-            .args([
-                "delete-generic-password",
-                "-s", service,
-                "-a", account,
-            ])
+            .args(["delete-generic-password", "-s", service, "-a", account])
             .stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(Stdio::piped())

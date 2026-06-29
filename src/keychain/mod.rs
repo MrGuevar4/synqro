@@ -61,12 +61,7 @@ pub trait KeychainProvider: Send + Sync {
     /// # Errors
     /// - `SynqroError::Keychain` if the store operation fails.
     /// - `SynqroError::Permission` if the secure store is unavailable.
-    fn store_secret(
-        &self,
-        service: &str,
-        account: &str,
-        secret: &[u8],
-    ) -> Result<(), SynqroError>;
+    fn store_secret(&self, service: &str, account: &str, secret: &[u8]) -> Result<(), SynqroError>;
 
     /// Delete the secret for the given `service`/`account` pair.
     ///

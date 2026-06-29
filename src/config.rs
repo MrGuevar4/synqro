@@ -231,9 +231,7 @@ fn validate_config(cfg: &SynqroConfig) -> Result<(), SynqroError> {
     }
 
     // --- installation ID ---
-    if cfg.installation_id.trim().is_empty()
-        || cfg.installation_id.trim() == SENTINEL_REPLACE_ME
-    {
+    if cfg.installation_id.trim().is_empty() || cfg.installation_id.trim() == SENTINEL_REPLACE_ME {
         return Err(SynqroError::Config(
             "installation_id must be set to a unique identifier".into(),
         ));
@@ -241,7 +239,9 @@ fn validate_config(cfg: &SynqroConfig) -> Result<(), SynqroError> {
 
     // --- source ---
     if cfg.source.provider.is_empty() {
-        return Err(SynqroError::Config("source.provider must not be empty".into()));
+        return Err(SynqroError::Config(
+            "source.provider must not be empty".into(),
+        ));
     }
     if cfg.source.owner.is_empty() {
         return Err(SynqroError::Config("source.owner must not be empty".into()));
@@ -250,7 +250,9 @@ fn validate_config(cfg: &SynqroConfig) -> Result<(), SynqroError> {
         return Err(SynqroError::Config("source.repo must not be empty".into()));
     }
     if cfg.source.branch.is_empty() {
-        return Err(SynqroError::Config("source.branch must not be empty".into()));
+        return Err(SynqroError::Config(
+            "source.branch must not be empty".into(),
+        ));
     }
     if cfg.source.manifest_path.is_empty() {
         return Err(SynqroError::Config(
@@ -393,17 +395,16 @@ axiomota:
 
     #[test]
     fn rejects_check_interval_below_60() {
-        let yaml = minimal_valid_yaml().replace("check_interval_seconds: 300", "check_interval_seconds: 59");
+        let yaml = minimal_valid_yaml()
+            .replace("check_interval_seconds: 300", "check_interval_seconds: 59");
         let err = parse_inline(&yaml).unwrap_err();
         assert!(matches!(err, SynqroError::Config(_)), "{:?}", err);
     }
 
     #[test]
     fn rejects_sentinel_pubkey() {
-        let yaml = minimal_valid_yaml().replace(
-            "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
-            "REPLACE_ME",
-        );
+        let yaml = minimal_valid_yaml()
+            .replace("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=", "REPLACE_ME");
         let err = parse_inline(&yaml).unwrap_err();
         assert!(matches!(err, SynqroError::Config(_)), "{:?}", err);
     }
@@ -427,7 +428,10 @@ axiomota:
 
     #[test]
     fn rejects_rollback_with_zero_timeout() {
-        let yaml = minimal_valid_yaml().replace("health_check_timeout_seconds: 30", "health_check_timeout_seconds: 0");
+        let yaml = minimal_valid_yaml().replace(
+            "health_check_timeout_seconds: 30",
+            "health_check_timeout_seconds: 0",
+        );
         let err = parse_inline(&yaml).unwrap_err();
         assert!(matches!(err, SynqroError::Config(_)), "{:?}", err);
     }

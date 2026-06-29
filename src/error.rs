@@ -202,10 +202,14 @@ impl SynqroResult {
     /// that the CString constructor never fails.
     pub fn err(status: SynqroStatus, msg: &str, id: u64) -> Self {
         // Sanitise: replace any embedded NUL bytes so CString::new cannot fail.
-        let sanitised: String = msg.chars().map(|c| if c == '\0' { '?' } else { c }).collect();
+        let sanitised: String = msg
+            .chars()
+            .map(|c| if c == '\0' { '?' } else { c })
+            .collect();
         // SAFETY: sanitised contains no NUL bytes, so new() cannot return Err.
-        let cstring = std::ffi::CString::new(sanitised)
-            .unwrap_or_else(|_| std::ffi::CString::new("(message encoding error)").expect("static literal is valid"));
+        let cstring = std::ffi::CString::new(sanitised).unwrap_or_else(|_| {
+            std::ffi::CString::new("(message encoding error)").expect("static literal is valid")
+        });
         Self {
             status,
             message: cstring.into_raw(),
@@ -320,7 +324,11 @@ mod tests {
         let msg = unsafe { std::ffi::CStr::from_ptr(r.message) }
             .to_string_lossy()
             .into_owned();
-        assert!(!msg.contains("super secret details"), "internal detail leaked: {}", msg);
+        assert!(
+            !msg.contains("super secret details"),
+            "internal detail leaked: {}",
+            msg
+        );
         // Free the message.
         let _ = unsafe { std::ffi::CString::from_raw(r.message as *mut c_char) };
     }
@@ -328,16 +336,46 @@ mod tests {
     #[test]
     fn status_mapping_is_correct() {
         let cases: Vec<(SynqroError, SynqroStatus)> = vec![
-            (SynqroError::InvalidInput("x".into()), SynqroStatus::SynqroErrInvalidInput),
-            (SynqroError::Crypto("x".into()), SynqroStatus::SynqroErrCrypto),
-            (SynqroError::Network("x".into()), SynqroStatus::SynqroErrNetwork),
-            (SynqroError::SignatureVerification("x".into()), SynqroStatus::SynqroErrSignature),
-            (SynqroError::RollbackBlocked("x".into()), SynqroStatus::SynqroErrRollback),
-            (SynqroError::Permission("x".into()), SynqroStatus::SynqroErrPermission),
-            (SynqroError::Internal("x".into()), SynqroStatus::SynqroErrInternal),
-            (SynqroError::Signature("x".into()), SynqroStatus::SynqroErrSignature),
-            (SynqroError::Rollback("x".into()), SynqroStatus::SynqroErrRollback),
-            (SynqroError::Keychain("x".into()), SynqroStatus::SynqroErrPermission),
+            (
+                SynqroError::InvalidInput("x".into()),
+                SynqroStatus::SynqroErrInvalidInput,
+            ),
+            (
+                SynqroError::Crypto("x".into()),
+                SynqroStatus::SynqroErrCrypto,
+            ),
+            (
+                SynqroError::Network("x".into()),
+                SynqroStatus::SynqroErrNetwork,
+            ),
+            (
+                SynqroError::SignatureVerification("x".into()),
+                SynqroStatus::SynqroErrSignature,
+            ),
+            (
+                SynqroError::RollbackBlocked("x".into()),
+                SynqroStatus::SynqroErrRollback,
+            ),
+            (
+                SynqroError::Permission("x".into()),
+                SynqroStatus::SynqroErrPermission,
+            ),
+            (
+                SynqroError::Internal("x".into()),
+                SynqroStatus::SynqroErrInternal,
+            ),
+            (
+                SynqroError::Signature("x".into()),
+                SynqroStatus::SynqroErrSignature,
+            ),
+            (
+                SynqroError::Rollback("x".into()),
+                SynqroStatus::SynqroErrRollback,
+            ),
+            (
+                SynqroError::Keychain("x".into()),
+                SynqroStatus::SynqroErrPermission,
+            ),
             (SynqroError::Degraded, SynqroStatus::SynqroErrInternal),
         ];
         for (err, expected) in cases {

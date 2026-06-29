@@ -58,7 +58,9 @@ impl LinuxKeychain {
         // reside in a trusted location.
         if binary_available("secret-tool") {
             debug!(backend = "secret-tool", "Linux keychain backend selected");
-            return Ok(Self { backend: LinuxBackend::SecretTool });
+            return Ok(Self {
+                backend: LinuxBackend::SecretTool,
+            });
         }
 
         if binary_available("keyctl") {
@@ -66,11 +68,15 @@ impl LinuxKeychain {
                 backend = "keyctl",
                 "secret-tool not found; falling back to kernel keyring (keyctl)"
             );
-            return Ok(Self { backend: LinuxBackend::Keyctl });
+            return Ok(Self {
+                backend: LinuxBackend::Keyctl,
+            });
         }
 
         error!("Neither secret-tool nor keyctl found; cannot initialise Linux keychain");
-        Err(SynqroError::Permission("neither secret-tool nor keyctl found".into()))
+        Err(SynqroError::Permission(
+            "neither secret-tool nor keyctl found".into(),
+        ))
     }
 }
 
@@ -98,12 +104,7 @@ impl KeychainProvider for LinuxKeychain {
     /// # Errors
     /// - `SynqroError::Keychain` if the store operation fails.
     /// - `SynqroError::Permission` if the subprocess is unavailable.
-    fn store_secret(
-        &self,
-        service: &str,
-        account: &str,
-        secret: &[u8],
-    ) -> Result<(), SynqroError> {
+    fn store_secret(&self, service: &str, account: &str, secret: &[u8]) -> Result<(), SynqroError> {
         match self.backend {
             LinuxBackend::SecretTool => secret_tool_store(service, account, secret),
             LinuxBackend::Keyctl => keyctl_store(service, account, secret),
@@ -187,7 +188,10 @@ fn secret_tool_store(service: &str, account: &str, secret: &[u8]) -> Result<(), 
 
     // Write the secret to the child's stdin, then close the pipe.
     {
-        let stdin = child.stdin.as_mut().ok_or_else(|| SynqroError::Internal("stdin not available".into()))?;
+        let stdin = child
+            .stdin
+            .as_mut()
+            .ok_or_else(|| SynqroError::Internal("stdin not available".into()))?;
         stdin.write_all(secret).map_err(|e| {
             error!(error = %e, "Failed to write secret to secret-tool stdin");
             SynqroError::Keychain("stdin write failed".to_owned())
@@ -261,9 +265,7 @@ fn keyctl_read(service: &str, account: &str) -> Result<Vec<u8>, SynqroError> {
         )));
     }
 
-    let key_id = String::from_utf8_lossy(&id_output.stdout)
-        .trim()
-        .to_owned();
+    let key_id = String::from_utf8_lossy(&id_output.stdout).trim().to_owned();
 
     // Step 2: pipe the key payload to stdout.
     // SECURITY: argv-style — key ID is a numeric string, not a shell expression.
@@ -309,7 +311,10 @@ fn keyctl_store(service: &str, account: &str, secret: &[u8]) -> Result<(), Synqr
         })?;
 
     {
-        let stdin = child.stdin.as_mut().ok_or_else(|| SynqroError::Internal("stdin not available".into()))?;
+        let stdin = child
+            .stdin
+            .as_mut()
+            .ok_or_else(|| SynqroError::Internal("stdin not available".into()))?;
         stdin.write_all(secret).map_err(|e| {
             error!(error = %e, "Failed to write secret to keyctl stdin");
             SynqroError::Keychain("stdin write failed".to_owned())
@@ -350,9 +355,7 @@ fn keyctl_unlink(service: &str, account: &str) -> Result<(), SynqroError> {
         return Ok(());
     }
 
-    let key_id = String::from_utf8_lossy(&id_output.stdout)
-        .trim()
-        .to_owned();
+    let key_id = String::from_utf8_lossy(&id_output.stdout).trim().to_owned();
 
     // SECURITY: argv-style — key ID is a numeric string from keyctl itself.
     let unlink_output = run_with_timeout(

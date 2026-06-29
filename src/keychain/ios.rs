@@ -143,12 +143,7 @@ impl KeychainProvider for IosKeychain {
     /// # Errors
     /// - `SynqroError::Keychain` if the store operation fails.
     /// - `SynqroError::Permission` if the app lacks keychain entitlements.
-    fn store_secret(
-        &self,
-        service: &str,
-        account: &str,
-        secret: &[u8],
-    ) -> Result<(), SynqroError> {
+    fn store_secret(&self, service: &str, account: &str, secret: &[u8]) -> Result<(), SynqroError> {
         // SECURITY: Direct Keychain Services API via security-framework.
         // kSecAttrAccessibleWhenUnlockedThisDeviceOnly is the most restrictive
         // accessibility class — suitable for tokens that grant network access.

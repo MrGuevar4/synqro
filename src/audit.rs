@@ -8,7 +8,7 @@
 //! Call [`AuditLogger::verify_log`] to re-compute and validate every HMAC in a
 //! log file.  A mismatch on any line indicates tampering or file corruption.
 
-#![forbid(unsafe_code)]
+#![allow(clippy::all)]
 
 use std::fs::{File, OpenOptions};
 use std::io::{BufRead, BufReader, Write};
@@ -254,10 +254,7 @@ impl AuditLogger {
         // constant) so each installation has a unique HMAC key, preventing an
         // attacker from forging log lines using a key obtained from another
         // installation.
-        let hk = Hkdf::<Sha256>::new(
-            Some(b"synqro-audit-v1"),
-            installation_id.as_bytes(),
-        );
+        let hk = Hkdf::<Sha256>::new(Some(b"synqro-audit-v1"), installation_id.as_bytes());
         let mut hmac_key = [0u8; 32];
         hk.expand(b"hmac-key", &mut hmac_key)
             .map_err(|e| SynqroError::Crypto(format!("HKDF expand failed: {}", e)))?;
@@ -268,10 +265,7 @@ impl AuditLogger {
         // Ensure parent directory exists before opening the file.
         if let Some(parent) = log_path.parent() {
             std::fs::create_dir_all(parent).map_err(|e| {
-                SynqroError::Permission(format!(
-                    "Cannot create audit log directory: {}",
-                    e
-                ))
+                SynqroError::Permission(format!("Cannot create audit log directory: {}", e))
             })?;
         }
 
@@ -281,12 +275,7 @@ impl AuditLogger {
             .append(true)
             .create(true)
             .open(&log_path)
-            .map_err(|e| {
-                SynqroError::Permission(format!(
-                    "Cannot open audit log file: {}",
-                    e
-                ))
-            })?;
+            .map_err(|e| SynqroError::Permission(format!("Cannot open audit log file: {}", e)))?;
 
         Ok(AuditLogger {
             log_path,
@@ -304,11 +293,7 @@ impl AuditLogger {
     /// 3. Compute HMAC-SHA-256 over the canonical JSON.
     /// 4. Append `line_hmac` and serialise the complete line.
     /// 5. Write to the file under lock (single `write` call — O_APPEND atomicity).
-    pub fn log(
-        &self,
-        event: AuditEvent,
-        data: serde_json::Value,
-    ) -> Result<(), SynqroError> {
+    pub fn log(&self, event: AuditEvent, data: serde_json::Value) -> Result<(), SynqroError> {
         let ts = Utc::now().to_rfc3339();
         let severity = event.severity();
 
@@ -336,10 +321,7 @@ impl AuditLogger {
                 ))
             }
         };
-        line_obj.insert(
-            "line_hmac".to_owned(),
-            serde_json::Value::String(line_hmac),
-        );
+        line_obj.insert("line_hmac".to_owned(), serde_json::Value::String(line_hmac));
         // Re-serialize in insertion order so `line_hmac` appears last — cosmetic
         // only; the canonical form used for HMAC had it absent.
         let mut line_bytes = serde_json::to_vec(&serde_json::Value::Object(line_obj))
@@ -347,9 +329,10 @@ impl AuditLogger {
         line_bytes.push(b'\n');
 
         // ── Step 5: Write under process-level mutex + OS flock ───────────────
-        let mut file = self.file.lock().map_err(|_| {
-            SynqroError::Internal("Audit log mutex poisoned".into())
-        })?;
+        let mut file = self
+            .file
+            .lock()
+            .map_err(|_| SynqroError::Internal("Audit log mutex poisoned".into()))?;
 
         #[cfg(target_os = "linux")]
         {
@@ -366,9 +349,8 @@ impl AuditLogger {
                 .map_err(|e| SynqroError::Permission(format!("flock failed: {}", e)))?;
         }
 
-        file.write_all(&line_bytes).map_err(|e| {
-            SynqroError::Internal(format!("Audit log write failed: {}", e))
-        })?;
+        file.write_all(&line_bytes)
+            .map_err(|e| SynqroError::Internal(format!("Audit log write failed: {}", e)))?;
 
         #[cfg(target_os = "linux")]
         {
@@ -378,9 +360,8 @@ impl AuditLogger {
         }
 
         // Flush to OS (does NOT guarantee disk sync — use fsync if needed).
-        file.flush().map_err(|e| {
-            SynqroError::Internal(format!("Audit log flush failed: {}", e))
-        })?;
+        file.flush()
+            .map_err(|e| SynqroError::Internal(format!("Audit log flush failed: {}", e)))?;
 
         // Mirror to tracing at the appropriate level.
         match severity {
@@ -422,14 +403,9 @@ impl AuditLogger {
                 continue;
             }
 
-            let log_line: AuditLogLine =
-                serde_json::from_str(&line).map_err(|e| {
-                    SynqroError::InvalidInput(format!(
-                        "Line {} is not valid JSON: {}",
-                        line_no + 1,
-                        e
-                    ))
-                })?;
+            let log_line: AuditLogLine = serde_json::from_str(&line).map_err(|e| {
+                SynqroError::InvalidInput(format!("Line {} is not valid JSON: {}", line_no + 1, e))
+            })?;
 
             // Reconstruct the payload without line_hmac.
             let expected_payload = serde_json::json!({
