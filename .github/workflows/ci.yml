@@ -366,13 +366,13 @@ jobs:
 
     steps:
       - name: Download SHA-256 from run 1
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: sha256-${{ matrix.target }}-run1-${{ github.run_id }}
           path: hashes/
 
       - name: Download SHA-256 from run 2
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: sha256-${{ matrix.target }}-run2-${{ github.run_id }}
           path: hashes/
