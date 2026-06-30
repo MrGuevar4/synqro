@@ -1,0 +1,22 @@
+{
+  "name": "@synqro/wasm",
+  "version": "0.1.0",
+  "description": "Synqro Zero-Trust OTA Updater - WebAssembly version",
+  "main": "pkg/synqro_wasm.js",
+  "types": "pkg/synqro_wasm.d.ts",
+  "files": [
+    "pkg/"
+  ],
+  "scripts": {
+    "build": "wasm-pack build --target nodejs"
+  },
+  "keywords": [
+    "ota",
+    "updater",
+    "security",
+    "wasm",
+    "rust"
+  ],
+  "author": "Farhang Fatih",
+  "license": "MIT"
+}
