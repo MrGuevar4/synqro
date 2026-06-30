@@ -1,0 +1,44 @@
+# .github/workflows/bootstrap-lockfile.yml
+# One-off helper: generates Cargo.lock on a real, current-stable Rust
+# toolchain and pushes it to a side branch (not main) for review/merge.
+# This file is deleted once Cargo.lock has been committed to main.
+
+name: Bootstrap Cargo.lock
+
+on:
+  workflow_dispatch: {}
+
+jobs:
+  generate-lockfile:
+    name: Generate Cargo.lock
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+
+      - name: Install Rust toolchain (stable)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+
+      - name: Generate Cargo.lock
+        run: cargo generate-lockfile --verbose
+
+      - name: Show resulting lockfile summary
+        run: |
+          echo "Package count: $(grep -c '^name = ' Cargo.lock)"
+          echo "::notice::Cargo.lock generated with $(grep -c '^name = ' Cargo.lock) packages"
+
+      - name: Commit and push to side branch
+        run: |
+          git config user.email "ci@synqro.dev"
+          git config user.name "Synqro Bootstrap Bot"
+          git checkout -b bootstrap/cargo-lock
+          git add Cargo.lock
+          git commit -m "chore: generate Cargo.lock via real stable Rust toolchain"
+          git push --force origin bootstrap/cargo-lock

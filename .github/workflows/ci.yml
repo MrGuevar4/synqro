@@ -66,6 +66,13 @@ jobs:
       - name: Run cargo-audit
         run: cargo audit --deny warnings --json > audit-report.json
 
+      - name: Diagnostic dump (cargo-audit) on failure
+        if: failure()
+        run: |
+          cargo audit --deny warnings 2>&1 | tail -80 | while IFS= read -r line; do
+            echo "::error::AUDIT: ${line}"
+          done
+
       - name: Upload audit report
         if: always()
         uses: actions/upload-artifact@v4
@@ -76,6 +83,13 @@ jobs:
 
       - name: Run cargo-deny
         run: cargo deny check
+
+      - name: Diagnostic dump (cargo-deny) on failure
+        if: failure()
+        run: |
+          cargo deny check 2>&1 | tail -80 | while IFS= read -r line; do
+            echo "::error::DENY: ${line}"
+          done
 
   # ─────────────────────────────────────────────────────────────
   # JOB 2: lint
@@ -183,8 +197,24 @@ jobs:
           TEST_LOG: synqro=debug
         run: cargo test --locked --all-features -- --nocapture
 
+      - name: Diagnostic dump (cargo test) on failure
+        if: failure()
+        shell: bash
+        run: |
+          cargo test --locked --all-features -- --nocapture 2>&1 | tail -100 | while IFS= read -r line; do
+            echo "::error::TEST[${{ matrix.os }}]: ${line}"
+          done
+
       - name: Run doc tests
         run: cargo test --locked --doc --all-features
+
+      - name: Diagnostic dump (doc tests) on failure
+        if: failure()
+        shell: bash
+        run: |
+          cargo test --locked --doc --all-features 2>&1 | tail -60 | while IFS= read -r line; do
+            echo "::error::DOCTEST[${{ matrix.os }}]: ${line}"
+          done
 
   # ─────────────────────────────────────────────────────────────
   # JOB 4: build (reproducible build verification)
