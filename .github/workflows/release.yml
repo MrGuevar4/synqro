@@ -106,7 +106,7 @@ jobs:
             gcc-aarch64-linux-gnu
 
       - name: Cache Cargo registry
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             ~/.cargo/registry/index
@@ -219,7 +219,7 @@ jobs:
           toolchain: ${{ env.RUSTUP_TOOLCHAIN }}
 
       - name: Cache Cargo registry
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             ~/.cargo/registry/index
