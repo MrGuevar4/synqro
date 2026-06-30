@@ -75,7 +75,7 @@ jobs:
 
       - name: Upload audit report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: audit-report-${{ github.run_id }}
           path: audit-report.json
@@ -328,14 +328,14 @@ jobs:
           "${{ env.BINARY_SHA256 }}" | Out-File -FilePath "sha256-${{ matrix.target }}-run${{ matrix.build_run }}.txt" -NoNewline
 
       - name: Upload SHA-256 file
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: sha256-${{ matrix.target }}-run${{ matrix.build_run }}-${{ github.run_id }}
           path: sha256-${{ matrix.target }}-run${{ matrix.build_run }}.txt
 
       - name: Upload binary (run 1 only, for release job)
         if: matrix.build_run == 1
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: binary-${{ matrix.target }}-${{ github.run_id }}
           path: |
@@ -425,7 +425,7 @@ jobs:
 
       - name: Upload Bandit report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: bandit-report-${{ github.run_id }}
           path: bandit-report.json
@@ -516,7 +516,7 @@ jobs:
           rmdir /dev/shm/synqro_ci_signing
 
       - name: Upload SBOM and signature
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: sbom-${{ github.run_id }}
           path: |

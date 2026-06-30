@@ -185,7 +185,7 @@ jobs:
         run: bash scripts/sign-artifact.sh "${ARCHIVE_NAME}"
 
       - name: Upload packaged artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: release-artifact-${{ matrix.artifact_name }}-${{ github.run_id }}
           path: |
