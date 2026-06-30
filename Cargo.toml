@@ -9,7 +9,8 @@ repository = "https://github.com/MrGuevar4/synqro"
 homepage = "https://github.com/MrGuevar4/synqro"
 readme = "README.md"
 keywords = ["ota", "updater", "security", "zero-trust", "cryptography"]
-categories = ["network-programming", "cryptography", "os"]
+categories = ["network-programming", "cryptography", "os", "embedded", "filesystem"]
+documentation = "https://docs.rs/synqro"
 
 [lib]
 name = "synqro"

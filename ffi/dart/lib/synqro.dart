@@ -288,6 +288,7 @@ typedef _SynqroHealthCheckDart = _CSynqroResult Function();
 /// [applyUpdate] and [rollback] must not overlap; all other methods are
 /// safe to call from multiple [Isolate]s after [init].
 final class SynqroClient {
+  // ignore: unused_field
   final DynamicLibrary _lib;
 
   // Bound C functions

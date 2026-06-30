@@ -9,7 +9,7 @@ description = "Synqro Zero-Trust OTA Updater Python SDK and Reporter"
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
-keywords = ["ota", "updater", "security", "zero-trust", "cryptography"]
+keywords = ["ota", "updater", "security", "zero-trust", "cryptography", "verification", "embedded"]
 authors = [
     { name = "Synqro Team" }
 ]
