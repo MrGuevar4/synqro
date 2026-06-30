@@ -32,10 +32,10 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/synqro/synqro"
-Documentation = "https://github.com/synqro/synqro#readme"
-Repository = "https://github.com/synqro/synqro.git"
-Issues = "https://github.com/synqro/synqro/issues"
+Homepage = "https://github.com/MrGuevar4/synqro"
+Documentation = "https://github.com/MrGuevar4/synqro#readme"
+Repository = "https://github.com/MrGuevar4/synqro.git"
+Issues = "https://github.com/MrGuevar4/synqro/issues"
 
 [tool.hatch.build.targets.wheel]
 packages = ["synqro"]

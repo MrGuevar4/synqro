@@ -1,9 +1,9 @@
 name: synqro
 description: Dart 3+ FFI binding for the Synqro Zero-Trust OTA Updater library. Provides type-safe native bindings across Linux, macOS, Windows, iOS, and Android.
 version: 0.1.0
-homepage: https://github.com/synqro/synqro
-repository: https://github.com/synqro/synqro/tree/main/ffi/dart
-issue_tracker: https://github.com/synqro/synqro/issues
+homepage: https://github.com/MrGuevar4/synqro
+repository: https://github.com/MrGuevar4/synqro/tree/main/ffi/dart
+issue_tracker: https://github.com/MrGuevar4/synqro/issues
 
 environment:
   sdk: '>=3.0.0 <4.0.0'
