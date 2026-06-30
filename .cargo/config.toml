@@ -1,21 +1,20 @@
 [build]
-# Enforce full RELRO and BIND_NOW for all targets by default
+# Enforce full RELRO and BIND_NOW for all targets by default.
+# NOTE: there is no rustc "-C relro-level" codegen option — RELRO/BIND_NOW
+# must be passed through to the linker via "-C link-arg".
 rustflags = [
-  "-C", "relro-level=full",
-  "-C", "link-arg=-Wl,-z,now",
+  "-C", "link-arg=-Wl,-z,relro,-z,now",
 ]
 
 [target.x86_64-unknown-linux-musl]
 rustflags = [
   "-C", "target-feature=+crt-static",
-  "-C", "relro-level=full",
-  "-C", "link-arg=-Wl,-z,now",
+  "-C", "link-arg=-Wl,-z,relro,-z,now",
 ]
 
 [target.x86_64-unknown-linux-gnu]
 rustflags = [
-  "-C", "relro-level=full",
-  "-C", "link-arg=-Wl,-z,now",
+  "-C", "link-arg=-Wl,-z,relro,-z,now",
 ]
 
 [net]

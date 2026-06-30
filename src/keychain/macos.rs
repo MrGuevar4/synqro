@@ -316,7 +316,7 @@ fn run_with_timeout(
 ) -> Result<std::process::Output, SynqroError> {
     let mut child = cmd.spawn().map_err(|e| {
         error!(error = %e, "Failed to spawn security CLI subprocess");
-        SynqroError::Permission
+        SynqroError::Permission(format!("Failed to spawn security CLI subprocess: {}", e))
     })?;
 
     let (tx, rx) = std::sync::mpsc::channel::<Result<std::process::Output, std::io::Error>>();

@@ -28,7 +28,7 @@ concurrency:
 env:
   RUST_BACKTRACE: 1
   CARGO_TERM_COLOR: always
-  RUSTUP_TOOLCHAIN: "1.78.0"
+  RUSTUP_TOOLCHAIN: "stable"
   SOURCE_DATE_EPOCH: "0"
   CARGO_INCREMENTAL: "0"
   RUSTFLAGS: "-C metadata=SYNQRO_REPRO -C link-arg=-Wl,--build-id=none"
@@ -36,12 +36,15 @@ env:
 jobs:
 
   # ─────────────────────────────────────────────────────────────
-  # Run all CI checks before any publishing step.
+  # NOTE: this workflow intentionally does NOT re-invoke ci.yml as a
+  # reusable workflow (`uses: ./.github/workflows/ci.yml`). That
+  # pattern produced an intermittent "startup_failure" on this repo.
+  # Tags are only ever pushed from commits already on `main`, and
+  # branch protection on `main` requires every CI status check to
+  # pass before a merge — so by the time a tag exists, CI has already
+  # run successfully against that exact commit. Re-running it here
+  # would be redundant.
   # ─────────────────────────────────────────────────────────────
-  ci:
-    name: CI Gate
-    uses: ./.github/workflows/ci.yml
-    secrets: inherit
 
   # ─────────────────────────────────────────────────────────────
   # JOB: build-release-artifacts
@@ -49,7 +52,6 @@ jobs:
   # ─────────────────────────────────────────────────────────────
   build-release-artifacts:
     name: Build Release Artifact (${{ matrix.artifact_name }})
-    needs: [ci]
     runs-on: ${{ matrix.runner }}
     permissions:
       contents: read
@@ -200,7 +202,6 @@ jobs:
   # ─────────────────────────────────────────────────────────────
   publish-crates-io:
     name: Publish to crates.io
-    needs: [ci]
     runs-on: ubuntu-24.04
     environment: crates-io
     permissions:
@@ -240,7 +241,6 @@ jobs:
   # ─────────────────────────────────────────────────────────────
   publish-pypi:
     name: Publish to PyPI
-    needs: [ci]
     runs-on: ubuntu-24.04
     environment: pypi
     permissions:
@@ -290,7 +290,6 @@ jobs:
   # ─────────────────────────────────────────────────────────────
   publish-pub-dev:
     name: Publish to pub.dev
-    needs: [ci]
     runs-on: ubuntu-24.04
     environment: pub-dev
     permissions:

@@ -146,7 +146,9 @@ impl AndroidKeychain {
         // A null JNIEnv would cause undefined behaviour on any JNI call attempt.
         if jni_env.is_null() {
             error!("AndroidKeychain::with_jni_env called with null JNIEnv pointer");
-            return Err(SynqroError::InvalidInput);
+            return Err(SynqroError::InvalidInput(
+                "jni_env pointer must not be null".into(),
+            ));
         }
 
         debug!("AndroidKeychain: JNI env registered");
@@ -173,7 +175,9 @@ impl AndroidKeychain {
         store_fn: JavaKeychainFn,
         delete_fn: JavaKeychainFn,
     ) -> Result<(), SynqroError> {
-        let mut cbs = self.callbacks.lock().map_err(|_| SynqroError::Internal)?;
+        let mut cbs = self.callbacks.lock().map_err(|_| {
+            SynqroError::Internal("Android Keychain callback mutex poisoned".into())
+        })?;
         cbs.load = Some(load_fn);
         cbs.store = Some(store_fn);
         cbs.delete = Some(delete_fn);
@@ -183,7 +187,10 @@ impl AndroidKeychain {
 
     /// Obtain a copy of the stored JNIEnv pointer, or return an error.
     fn jni_env_or_err(&self) -> Result<JniEnvPtr, SynqroError> {
-        let guard = self.jni_env.lock().map_err(|_| SynqroError::Internal)?;
+        let guard = self
+            .jni_env
+            .lock()
+            .map_err(|_| SynqroError::Internal("Android Keychain JNIEnv mutex poisoned".into()))?;
         guard.ok_or_else(|| {
             SynqroError::Keychain(
                 "Android Keystore: JNI environment not configured. \
@@ -212,7 +219,9 @@ impl KeychainProvider for AndroidKeychain {
     fn load_secret(&self, service: &str, account: &str) -> Result<Vec<u8>, SynqroError> {
         let env = self.jni_env_or_err()?;
 
-        let cbs = self.callbacks.lock().map_err(|_| SynqroError::Internal)?;
+        let cbs = self.callbacks.lock().map_err(|_| {
+            SynqroError::Internal("Android Keychain callback mutex poisoned".into())
+        })?;
         let load_fn = cbs.load.ok_or_else(|| {
             SynqroError::Keychain("Android Keystore: load JNI callback not registered".to_owned())
         })?;
@@ -276,7 +285,9 @@ impl KeychainProvider for AndroidKeychain {
     fn store_secret(&self, service: &str, account: &str, secret: &[u8]) -> Result<(), SynqroError> {
         let env = self.jni_env_or_err()?;
 
-        let cbs = self.callbacks.lock().map_err(|_| SynqroError::Internal)?;
+        let cbs = self.callbacks.lock().map_err(|_| {
+            SynqroError::Internal("Android Keychain callback mutex poisoned".into())
+        })?;
         let store_fn = cbs.store.ok_or_else(|| {
             SynqroError::Keychain("Android Keystore: store JNI callback not registered".to_owned())
         })?;
@@ -326,7 +337,9 @@ impl KeychainProvider for AndroidKeychain {
     fn delete_secret(&self, service: &str, account: &str) -> Result<(), SynqroError> {
         let env = self.jni_env_or_err()?;
 
-        let cbs = self.callbacks.lock().map_err(|_| SynqroError::Internal)?;
+        let cbs = self.callbacks.lock().map_err(|_| {
+            SynqroError::Internal("Android Keychain callback mutex poisoned".into())
+        })?;
         let delete_fn = cbs.delete.ok_or_else(|| {
             SynqroError::Keychain("Android Keystore: delete JNI callback not registered".to_owned())
         })?;

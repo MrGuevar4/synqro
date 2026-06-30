@@ -19,7 +19,7 @@ concurrency:
 env:
   RUST_BACKTRACE: 1
   CARGO_TERM_COLOR: always
-  RUSTUP_TOOLCHAIN: "1.78.0"
+  RUSTUP_TOOLCHAIN: "stable"
 
 jobs:
 

@@ -125,7 +125,10 @@ impl KeychainProvider for WindowsKeychain {
                     target = %target,
                     "CredReadW failed"
                 );
-                return Err(SynqroError::Permission);
+                return Err(SynqroError::Permission(format!(
+                    "CredReadW failed for target `{}`",
+                    target
+                )));
             }
 
             // SECURITY: null-check the pointer before dereferencing — WinAPI may
@@ -287,7 +290,9 @@ impl KeychainProvider for WindowsKeychain {
     // compile-time guards to avoid "not all trait items implemented" errors on CI.
     #[cfg(not(target_os = "windows"))]
     fn load_secret(&self, _service: &str, _account: &str) -> Result<Vec<u8>, SynqroError> {
-        Err(SynqroError::Permission)
+        Err(SynqroError::Permission(format!(
+            "Windows Keychain `load_secret` stub called on a non-Windows build"
+        )))
     }
 
     #[cfg(not(target_os = "windows"))]
@@ -297,11 +302,15 @@ impl KeychainProvider for WindowsKeychain {
         _account: &str,
         _secret: &[u8],
     ) -> Result<(), SynqroError> {
-        Err(SynqroError::Permission)
+        Err(SynqroError::Permission(format!(
+            "Windows Keychain `store_secret` stub called on a non-Windows build"
+        )))
     }
 
     #[cfg(not(target_os = "windows"))]
     fn delete_secret(&self, _service: &str, _account: &str) -> Result<(), SynqroError> {
-        Err(SynqroError::Permission)
+        Err(SynqroError::Permission(format!(
+            "Windows Keychain `delete_secret` stub called on a non-Windows build"
+        )))
     }
 }

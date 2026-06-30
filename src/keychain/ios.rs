@@ -125,7 +125,9 @@ impl KeychainProvider for IosKeychain {
         }
 
         #[cfg(not(target_os = "ios"))]
-        Err(SynqroError::Permission)
+        Err(SynqroError::Permission(format!(
+            "iOS Keychain `load_secret` is unavailable on this target platform"
+        )))
     }
 
     /// Store a generic password in the iOS Keychain.
@@ -181,7 +183,9 @@ impl KeychainProvider for IosKeychain {
         }
 
         #[cfg(not(target_os = "ios"))]
-        Err(SynqroError::Permission)
+        Err(SynqroError::Permission(format!(
+            "iOS Keychain `store_secret` is unavailable on this target platform"
+        )))
     }
 
     /// Delete a generic password from the iOS Keychain.
@@ -233,6 +237,8 @@ impl KeychainProvider for IosKeychain {
         }
 
         #[cfg(not(target_os = "ios"))]
-        Err(SynqroError::Permission)
+        Err(SynqroError::Permission(format!(
+            "iOS Keychain `delete_secret` is unavailable on this target platform"
+        )))
     }
 }
