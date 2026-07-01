@@ -41,7 +41,7 @@ uuid = { version = "=1.10.0", features = ["v4", "serde"] }
 once_cell = { version = "=1.19.0" }
 regex = { version = "=1.10.5" }
 atomic-write-file = { version = "=0.1.2" }
-rand = { version = "=0.8.5" }
+rand = { version = "=0.9.4" }
 webpki-roots = { version = "=0.26.3" }
 x509-parser = { version = "=0.16.0" }
 futures-util = { version = "0.3.31" }
